@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pinned requirements
+        run: pip install -r requirements.txt
+
+      # Raw CSVs are not in the repo, so the full-file checks skip with a
+      # "NOT RUN: ..." reason. pipefail keeps a test failure failing the job.
+      - name: Run tests
+        run: |
+          set -o pipefail
+          python -m pytest -p no:cacheprovider -rs | tee pytest.txt
+
+      - name: List tests NOT RUN
+        if: always()
+        run: |
+          {
+            echo "## Tests NOT RUN in CI (skipped, not passed)"
+            grep '^SKIPPED' pytest.txt | sed 's/^SKIPPED/- /' || echo "None"
+            echo
+            echo '```'
+            tail -n 1 pytest.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
