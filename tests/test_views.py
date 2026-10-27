@@ -25,7 +25,7 @@ def make_store(paths):
     conn = init_db(":memory:")
     for p in paths:
         store_load(conn, load_csv(p))
-    s = views.read_store(conn)
+    s = views.derive(views.read_store(conn))
     conn.close()
     return s
 
@@ -37,7 +37,7 @@ def oct_store():
 
 @pytest.fixture(scope="module")
 def empty_store():
-    return views.open_store(Path("does-not-exist.duckdb"))
+    return views.load_data(Path("does-not-exist.duckdb"), Path("no-snapshot-here"))
 
 
 def all_views(store):
@@ -215,7 +215,7 @@ def test_no_view_shows_unreconciled_mcx_figure(oct_store):
 @pytest.mark.skipif(not STORE_PATH.exists(), reason="NOT RUN: data/aureus.duckdb not present")
 def test_smoke_real_store():
     before = STORE_PATH.stat().st_mtime
-    store = views.open_store(STORE_PATH)
+    store = views.derive(views.open_store(STORE_PATH))
     assert store.sessions
     for v in all_views(store):
         assert v.labels()

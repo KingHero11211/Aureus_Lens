@@ -1,4 +1,5 @@
-"""Streamlit dashboard. Reads only the local DuckDB store and files in docs/.
+"""Streamlit dashboard. Reads the local DuckDB store if present, otherwise the
+committed snapshot in data/snapshot/, and files in docs/. No network calls.
 
 Run: streamlit run app/dashboard.py
 """
@@ -27,7 +28,7 @@ st.set_page_config(page_title="Aureus Lens", layout="wide")
 
 @st.cache_data(ttl=60)
 def load():
-    return views.open_store(ROOT / DEFAULT_DB_PATH)
+    return views.load_data(ROOT / DEFAULT_DB_PATH, ROOT / "data" / "snapshot")
 
 
 def show(view: views.View) -> None:
@@ -54,7 +55,7 @@ def chart_layout(fig, title, yaxis):
 store = load()
 pages = ["Data Health", "Normalized View", "Spread Scanner", "Waterfall", "Coverage", "Backtest"]
 page = st.sidebar.radio("Page", pages)
-st.sidebar.caption(f"Store: {DEFAULT_DB_PATH}")
+st.sidebar.caption(f"Read from: {store.origin or 'nothing (no store or snapshot)'}")
 st.sidebar.caption(f"Sessions stored: {len(store.sessions)}")
 
 if page == "Data Health":
@@ -64,7 +65,7 @@ elif page == "Normalized View":
     view = views.normalized_view(store)
     if not view.empty:
         day = st.selectbox("Session", store.sessions, index=len(store.sessions) - 1)
-        b = view.tables["Close at 999, per gram"]
+        b = view.tables["Price at 999, per gram"]
         fig = go.Figure()
         for sym, color in SERIES.items():
             s = b[(b["date"] == day) & (b["symbol"] == sym)].sort_values("expiry_date")
@@ -76,14 +77,14 @@ elif page == "Normalized View":
     show(view)
 
 elif page == "Spread Scanner":
-    if store.bhav.empty:
+    if store.empty:
         show(views.scanner_view(store))
     else:
         day = st.selectbox("Session", store.sessions, index=len(store.sessions) - 1)
         show(views.scanner_view(store, day))
 
 elif page == "Waterfall":
-    if store.bhav.empty:
+    if store.empty:
         show(views.waterfall_view(store, None, None, None, None, None))
     else:
         day = st.selectbox("Session", store.sessions, index=len(store.sessions) - 1)

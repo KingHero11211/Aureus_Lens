@@ -1,7 +1,9 @@
-"""Data for each dashboard page, built from the store without Streamlit.
+"""Data for each dashboard page, without Streamlit.
 
-Every function returns a View. A View always carries its source files,
-date range and unit, so no table reaches the page without them.
+derive() computes every table the pages use from the store. The pages read
+only those derived tables, so the same pages run from the DuckDB store or
+from the committed snapshot. Every page function returns a View, which
+always carries its source files, date range and unit.
 """
 
 import inspect
@@ -32,7 +34,8 @@ from src.aureus_lens.core.waterfall import compute_waterfall
 from src.aureus_lens.reconcile import _weekdays_between, check_continuity, value_check
 from src.aureus_lens.store.db import read_bhav
 
-EMPTY = "The store has no rows. Load CSV files with: python -m scripts.load_csv data/raw/*.csv"
+EMPTY = ("No data: neither the store nor the snapshot is present. Load CSV files with: "
+         "python -m scripts.load_csv data/raw/*.csv")
 NO_SIGNAL = "No actionable signal"
 VERIFICATION_MD = PROJECT_ROOT / "docs" / "VERIFICATION.md"
 
@@ -45,6 +48,7 @@ KIND_LABEL = {
     "small_small": "same expiry, small vs small",
     "small_goldm": "small vs GOLDM (depends on purity assumption)",
 }
+PAIR_KEYS = ["kind", "leg_a", "leg_b", "expiry_a"]
 
 
 @dataclass
@@ -57,11 +61,14 @@ class View:
     messages: List[str] = field(default_factory=list)
     tables: Dict[str, pd.DataFrame] = field(default_factory=dict)
     empty: bool = False
+    origin: str = ""
 
     def labels(self) -> str:
         parts = [f"Source: {self.source}", f"Dates: {self.date_range}", f"Unit: {self.unit}"]
         if self.carry_source:
             parts.append(f"carry_source: {self.carry_source}")
+        if self.origin:
+            parts.append(f"Read from: {self.origin}")
         return " | ".join(parts)
 
 
@@ -71,13 +78,30 @@ class Store:
     load_log: pd.DataFrame
     refused: pd.DataFrame
 
+
+@dataclass
+class Derived:
+    """Tables the pages need. None of them holds raw bhavcopy rows."""
+    origin: str
+    normalized: pd.DataFrame     # date, symbol, expiry_date, ppg999, lots_traded, zero_volume, source_file
+    pairs: pd.DataFrame          # build_pairs output plus baseline
+    carry: pd.DataFrame          # carry_series output
+    continuity: pd.DataFrame     # date, symbol, expiry_date, status
+    load_log: pd.DataFrame
+    refused: pd.DataFrame        # date, detail
+    value_summary: pd.DataFrame  # date, in_range, active
+
+    @property
+    def empty(self) -> bool:
+        return self.normalized.empty
+
     @property
     def sessions(self) -> List:
-        return sorted(self.bhav["date"].unique()) if not self.bhav.empty else []
+        return sorted(self.normalized["date"].unique()) if not self.empty else []
 
 
 def read_store(conn: duckdb.DuckDBPyConnection) -> Store:
-    """Return the tables the pages use from an open connection."""
+    """Return the tables derive() needs from an open connection."""
     return Store(
         read_bhav(conn),
         conn.execute("SELECT * FROM load_log ORDER BY first_date, source_file").df(),
@@ -97,12 +121,56 @@ def open_store(path) -> Store:
         conn.close()
 
 
+def baseline_counts(pairs: pd.DataFrame) -> pd.Series:
+    """Return, per row, the number of earlier non-missing spreads in the same
+    pair and expiry series: the history the z-score baseline can use."""
+    ordered = pairs.sort_values("date")
+    prior = ordered.groupby(PAIR_KEYS)["spread_bps"].transform(
+        lambda s: s.notna().cumsum().shift(1, fill_value=0))
+    return prior.reindex(pairs.index).astype(int)
+
+
+def derive(store: Store, origin: str = "DuckDB store") -> Derived:
+    """Compute every table the pages use."""
+    b = store.bhav
+    if b.empty:
+        none = pd.DataFrame()
+        return Derived(origin, none, none, none, none, none, none, none)
+    normalized = pd.DataFrame({
+        "date": b["date"], "symbol": b["symbol"], "expiry_date": b["expiry_date"],
+        "ppg999": add_ppg999(b), "lots_traded": b["volume_lots"],
+        "zero_volume": b["zero_volume"], "source_file": b["source_file"]})
+    carry = carry_series(b)
+    pairs = build_pairs(b, carry)
+    pairs["baseline"] = baseline_counts(pairs)
+    cont = check_continuity(b)[["date", "symbol", "expiry_date", "status"]]
+    vc = value_check(b).groupby("date")["in_range"].agg(in_range="sum", active="size").reset_index()
+    load_log = store.load_log.copy()
+    for col in ["first_date", "last_date"]:
+        load_log[col] = pd.to_datetime(load_log[col]).dt.date
+    refused = store.refused.copy()
+    if not refused.empty:
+        refused["date"] = pd.to_datetime(refused["date"]).dt.date
+    return Derived(origin, normalized.reset_index(drop=True), pairs, carry, cont.reset_index(drop=True),
+                   load_log, refused, vc)
+
+
+def load_data(store_path: Path, snapshot_dir: Path) -> Derived:
+    """Return derived tables from the store if present, else the snapshot, else empty."""
+    if Path(store_path).exists():
+        return derive(open_store(store_path))
+    from src.aureus_lens.snapshot import read_snapshot
+    if (Path(snapshot_dir) / "manifest.json").exists():
+        return read_snapshot(snapshot_dir)
+    return derive(open_store(store_path), origin="")
+
+
 def insufficient(have: int, need: int) -> str:
     return f"insufficient history ({have} of {need} sessions)"
 
 
-def _source(bhav: pd.DataFrame) -> str:
-    files = list(bhav.groupby("source_file")["date"].min().sort_values().index)
+def _source(normalized: pd.DataFrame) -> str:
+    files = list(normalized.groupby("source_file")["date"].min().sort_values().index)
     return files[0] if len(files) == 1 else f"{files[0]} to {files[-1]} ({len(files)} files)"
 
 
@@ -111,7 +179,7 @@ def _dates(sessions) -> str:
 
 
 def _empty(title: str, unit: str) -> View:
-    return View(title, "DuckDB store", "none", unit, messages=[EMPTY], empty=True)
+    return View(title, "none", "none", unit, messages=[EMPTY], empty=True)
 
 
 def not_run_items(path: Path = VERIFICATION_MD) -> pd.DataFrame:
@@ -126,60 +194,45 @@ def not_run_items(path: Path = VERIFICATION_MD) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["item", "check", "result"])
 
 
-def data_health_view(store: Store) -> View:
-    if store.bhav.empty:
+def data_health_view(d: Derived) -> View:
+    if d.empty:
         v = _empty("Data Health", "rows")
         v.tables["NOT RUN checks (docs/VERIFICATION.md)"] = not_run_items()
         return v
-    vc = value_check(store.bhav)
-    in_range = vc.groupby("date")["in_range"].agg(["sum", "size"])
-    files = store.load_log.copy()
+    vs = d.value_summary.set_index("date")
+    files = d.load_log.copy()
     files["value check"] = files["first_date"].map(
-        lambda d: f"{in_range.loc[d.date(), 'sum']} of {in_range.loc[d.date(), 'size']} "
-                  "active rows within low-high range" if d.date() in in_range.index else "no active rows")
+        lambda day: f"{vs.loc[day, 'in_range']} of {vs.loc[day, 'active']} active rows within low-high range"
+        if day in vs.index else "no active rows")
     files = files.rename(columns={"source_file": "file", "first_date": "date", "rows_kept": "rows kept",
                                   "rows_rejected": "rows rejected"})
-    files["date"] = files["date"].dt.date
-    cont = check_continuity(store.bhav)["status"].value_counts()
+    cont = d.continuity["status"].value_counts()
     counts = pd.DataFrame({"status": ["ok", "gap", "unchecked", "new", "first"]})
     counts["rows"] = counts["status"].map(lambda s: int(cont.get(s, 0)))
-    refused = store.refused.copy()
-    if not refused.empty:
-        refused["date"] = pd.to_datetime(refused["date"]).dt.date
     return View(
-        "Data Health", "load_log, data_health and bhav tables", _dates(store.sessions), "rows",
+        "Data Health", "load_log, data_health and bhav tables", _dates(d.sessions), "rows", origin=d.origin,
         tables={
             "Files loaded": files[["file", "date", "format", "rows kept", "rows rejected", "value check"]],
-            "Files not stored": refused,
+            "Files not stored": d.refused,
             "Continuity (previous close vs prior stored close)": counts,
             "NOT RUN checks (docs/VERIFICATION.md)": not_run_items(),
         },
     )
 
 
-def normalized_view(store: Store) -> View:
+def normalized_view(d: Derived) -> View:
     unit = "rupees per gram of 999 gold"
-    if store.bhav.empty:
+    if d.empty:
         return _empty("Normalized View", unit)
-    b = store.bhav.copy()
-    b["ppg999"] = add_ppg999(b).round(2)
-    v = View("Normalized View", _source(b), _dates(store.sessions), unit,
-             tables={"Close at 999, per gram": b[["date", "symbol", "expiry_date", "close", "ppg999",
-                                                    "volume_lots", "zero_volume"]]})
-    if len(store.sessions) < 2:
-        v.messages.append(f"Series view: {insufficient(len(store.sessions), 2)}")
+    n = d.normalized.copy()
+    n["ppg999"] = n["ppg999"].round(2)
+    v = View("Normalized View", _source(n), _dates(d.sessions), unit, origin=d.origin,
+             tables={"Price at 999, per gram": n[["date", "symbol", "expiry_date", "ppg999",
+                                                   "lots_traded", "zero_volume"]]})
+    if len(d.sessions) < 2:
+        v.messages.append(f"Series view: {insufficient(len(d.sessions), 2)}")
     v.messages.append("Purity factors are UNVERIFIED (GOLDM 995, others 999).")
     return v
-
-
-def baseline_counts(pairs: pd.DataFrame) -> pd.Series:
-    """Return, per row, the number of earlier non-missing spreads in the same
-    pair and expiry series: the history the z-score baseline can use."""
-    keys = ["kind", "leg_a", "leg_b", "expiry_a"]
-    ordered = pairs.sort_values("date")
-    prior = ordered.groupby(keys)["spread_bps"].transform(
-        lambda s: s.notna().cumsum().shift(1, fill_value=0))
-    return prior.reindex(pairs.index).astype(int)
 
 
 def z_display(pairs: pd.DataFrame) -> pd.Series:
@@ -207,23 +260,24 @@ def carry_display(carry: pd.DataFrame) -> pd.DataFrame:
     return c[["date", "carry per year", "carry_source", "near_expiry", "far_expiry", "valid_sessions", "shown"]]
 
 
-def scanner_view(store: Store, date=None) -> View:
-    if store.bhav.empty:
+def _day_source(d: Derived, day) -> str:
+    return _source(d.normalized[d.normalized["date"] == day])
+
+
+def scanner_view(d: Derived, date=None) -> View:
+    if d.empty:
         return _empty("Spread Scanner", "bps")
-    carry = carry_series(store.bhav)
-    pairs = build_pairs(store.bhav, carry)
-    day = date or store.sessions[-1]
-    pairs["baseline"] = baseline_counts(pairs)
-    p = pairs[pairs["date"] == day].copy()
+    day = date or d.sessions[-1]
+    p = d.pairs[d.pairs["date"] == day].copy()
     short = p["baseline"] < Z_MIN_PERIODS
 
     p["pair"] = p["leg_a"] + " " + p["expiry_a"].astype(str) + " vs " + p["leg_b"] + " " + p["expiry_b"].astype(str)
     p["gate"] = np.where(p["passes"], "pass", "fail")
-    p["failing reasons"] = p["reasons"].map(lambda r: "; ".join(r) if r else "")
+    p["failing reasons"] = p["reasons"].map(lambda r: "; ".join(r) if len(r) else "")
     p["zscore"] = z_display(p)
     # Below the required history no row may count as a signal, whatever the code returned.
     p.loc[short, "signal"] = False
-    cd = carry_display(carry).set_index("date")
+    cd = carry_display(d.carry).set_index("date")
     carry_ok = bool(cd.loc[day, "shown"])
     if not carry_ok:
         note = "carry " + insufficient(int(cd.loc[day, "valid_sessions"]), CARRY_MIN_SESSIONS)
@@ -235,8 +289,9 @@ def scanner_view(store: Store, date=None) -> View:
         p.loc[goldm, "signal"] = False
     cols = ["pair", "spread_bps", "cost_bps", "carry_source", "gate", "failing reasons", "zscore", "signal"]
 
-    v = View("Spread Scanner", _source(store.bhav[store.bhav["date"] == day]), f"{day} (history: {_dates(store.sessions)})",
-             "bps of leg b; cost is pair round trip", carry_source=_carry_label(carry[carry["date"] == day]))
+    v = View("Spread Scanner", _day_source(d, day), f"{day} (history: {_dates(d.sessions)})",
+             "bps of leg b; cost is pair round trip; carry per year, continuous",
+             carry_source=_carry_label(d.carry[d.carry["date"] == day]), origin=d.origin)
     for kind in ["small_small", "small_goldm"]:
         t = p[p["kind"] == kind][cols].copy()
         t["spread_bps"] = t["spread_bps"].map(lambda x: round(x, 2) if isinstance(x, float) else x)
@@ -273,31 +328,29 @@ def _reason_kind(reason: str) -> str:
     return reason
 
 
-def pair_options(store: Store, date) -> pd.DataFrame:
-    pairs = build_pairs(store.bhav, carry_series(store.bhav))
-    p = pairs[pairs["date"] == date]
+def pair_options(d: Derived, date) -> pd.DataFrame:
+    p = d.pairs[d.pairs["date"] == date]
     return p[["kind", "leg_a", "expiry_a", "leg_b", "expiry_b"]].reset_index(drop=True)
 
 
-def waterfall_view(store: Store, date, kind, leg_a, expiry_a, leg_b) -> View:
-    if store.bhav.empty:
+def waterfall_view(d: Derived, date, kind, leg_a, expiry_a, leg_b) -> View:
+    if d.empty:
         return _empty("Waterfall", "bps")
-    carry = carry_series(store.bhav)
-    pairs = build_pairs(store.bhav, carry)
+    pairs = d.pairs
     hit = pairs[(pairs["date"] == date) & (pairs["kind"] == kind) & (pairs["leg_a"] == leg_a)
                 & (pairs["expiry_a"] == expiry_a) & (pairs["leg_b"] == leg_b)]
     if hit.empty:
-        return View("Waterfall", "DuckDB store", str(date), "bps", messages=["No such pair on this session."])
+        return View("Waterfall", "none", str(date), "bps", messages=["No such pair on this session."],
+                    origin=d.origin)
     r = hit.iloc[0]
+    v = View("Waterfall", _day_source(d, date), str(date), "bps of leg b",
+             carry_source=r["carry_source"], origin=d.origin)
     if kind == "small_goldm":
-        cd = carry_display(carry).set_index("date")
+        cd = carry_display(d.carry).set_index("date")
         if not cd.loc[date, "shown"]:
-            return View("Waterfall", _source(store.bhav[store.bhav["date"] == date]), str(date), "bps of leg b",
-                        carry_source=r["carry_source"],
-                        messages=["Carry step not shown: carry " + insufficient(
-                            int(cd.loc[date, "valid_sessions"]), CARRY_MIN_SESSIONS)])
-    v = View("Waterfall", _source(store.bhav[store.bhav["date"] == date]), str(date), "bps of leg b",
-             carry_source=r["carry_source"])
+            v.messages.append("Carry step not shown: carry " + insufficient(
+                int(cd.loc[date, "valid_sessions"]), CARRY_MIN_SESSIONS))
+            return v
     if pd.isna(r["spread_bps"]):
         v.messages.append("Spread not available: no carry estimate to align expiries.")
         return v
@@ -305,22 +358,21 @@ def waterfall_view(store: Store, date, kind, leg_a, expiry_a, leg_b) -> View:
                                             r["tick_floor_bps"], r["cost_bps"]))
     stages["stage"] = stages["stage"].replace({"edge": "executable edge"})
     v.tables[f"{leg_a} {expiry_a} vs {leg_b} {r['expiry_b']}"] = stages.round(4)
-    base = int(baseline_counts(pairs).loc[hit.index[0]])
     v.messages.append("Tick sizes and cost rates are UNVERIFIED. The edge is not a finding: "
-                      f"{insufficient(base, Z_MIN_PERIODS)} for a z-score.")
+                      f"{insufficient(int(r['baseline']), Z_MIN_PERIODS)} for a z-score.")
     return v
 
 
-def coverage_view(store: Store) -> View:
-    if store.bhav.empty:
+def coverage_view(d: Derived) -> View:
+    if d.empty:
         return _empty("Coverage", "sessions")
-    listing = store.bhav.groupby(["symbol", "expiry_date"]).agg(
+    listing = d.normalized.groupby(["symbol", "expiry_date"]).agg(
         first_session=("date", "min"), last_session=("date", "max"), sessions=("date", "size")).reset_index()
-    s = store.sessions
+    s = d.sessions
     gaps = [(a, b, _weekdays_between(a, b)) for a, b in zip(s, s[1:]) if _weekdays_between(a, b)]
     gaps = pd.DataFrame(gaps, columns=["stored session", "next stored session", "weekdays missing"])
     gaps["status"] = "unchecked (holiday or missing file)"
-    return View("Coverage", _source(store.bhav), _dates(s), "sessions",
+    return View("Coverage", _source(d.normalized), _dates(s), "sessions", origin=d.origin,
                 tables={"Sessions per contract": listing, "Gaps between stored sessions": gaps})
 
 
@@ -334,9 +386,9 @@ COST_RATES = [
 ]
 
 
-def backtest_view(store: Store) -> View:
+def backtest_view(d: Derived) -> View:
     v = View("Backtest", "PREREGISTRATION.md and config.py",
-             _dates(store.sessions) if store.sessions else "none", "rates",
+             _dates(d.sessions) if d.sessions else "none", "rates", origin=d.origin,
              messages=["Not run: awaiting contiguous history and pre-registration"])
     v.tables["Cost rates"] = pd.DataFrame(
         [(name, value, "UNVERIFIED") for name, value in COST_RATES], columns=["rate", "value", "status"])
