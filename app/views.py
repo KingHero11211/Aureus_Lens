@@ -189,7 +189,7 @@ def not_run_items(path: Path = VERIFICATION_MD) -> pd.DataFrame:
     rows = []
     for line in path.read_text(encoding="utf-8").splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if line.startswith("| ") and len(cells) >= 3 and re.search(r"(?<!Was )NOT RUN", cells[-1]):
+        if line.startswith("| ") and len(cells) >= 3 and re.search(r"(?<![Ww]as )NOT RUN", cells[-1]):
             rows.append((cells[0], cells[1], cells[-1]))
     return pd.DataFrame(rows, columns=["item", "check", "result"])
 

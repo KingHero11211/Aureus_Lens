@@ -195,6 +195,8 @@ def test_not_run_items_parsed_from_verification():
     items = views.not_run_items()
     assert "1.10" in set(items["item"])
     assert "2.6" not in set(items["item"])  # passed since step 3
+    assert "5.18" not in set(items["item"])  # passed since step 6
+    assert {"6.9", "6.14", "6.19", "6.20"} <= set(items["item"])
 
 
 # Backtest
