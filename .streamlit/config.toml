@@ -1,8 +1,8 @@
-# Local only. Binding an address stops Streamlit from looking up the
-# machine's external IP, and usage stats are off, so the app makes no
-# outbound requests.
+# Used locally and on Streamlit Community Cloud. No server.address here: the
+# platform serves the app itself. For local runs pass --server.address
+# localhost (see README); without a bound address Streamlit looks up the
+# machine's external IP at start-up.
 [server]
-address = "localhost"
 headless = true
 
 [browser]
