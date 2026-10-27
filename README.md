@@ -1,20 +1,25 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Aureus Lens
 
-# Run and deploy your AI Studio app
+Relative-value analytics for four MCX gold futures: GOLDM, GOLDTEN, GOLDGUINEA
+and GOLDPETAL. Built for Hack in Hills '26, Problem Statement 03.
 
-This contains everything you need to run your app locally.
+Work in progress. This README will be completed once the loader, pipeline and
+backtest are in place.
 
-View your app in AI Studio: https://ai.studio/apps/73c618d1-6e65-4cfd-91d2-0d6d611beab7
+## Setup
 
-## Run Locally
+Requires Python 3.11.
 
-**Prerequisites:**  Node.js
+```
+py -3.11 -m venv .venv            # Windows; use python3.11 on Linux/macOS
+.venv/Scripts/activate            # or: source .venv/bin/activate
+pip install -r requirements.txt
+pytest
+```
 
+Dependencies are pinned to exact versions in `requirements.txt`.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Data
+
+The project does not download data. Bhavcopy CSV files are downloaded by hand
+and placed in `data/raw/`, which is not committed.
