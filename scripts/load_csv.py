@@ -87,7 +87,7 @@ def main(argv: List[str] = None) -> int:
         cont,
     )
     Path(args.notes).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.notes).write_text(notes, encoding="utf-8")
+    Path(args.notes).write_text(notes, encoding="utf-8", newline="\n")
     print(f"notes:   {args.notes}")
     conn.close()
     return status
