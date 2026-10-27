@@ -1,92 +1,31 @@
-"""Relative-Value Waterfall Attribution Engine.
+"""Break a quoted gap into purity, carry, tick-floor and cost steps."""
 
-Decomposes raw quote gaps across purity adjustment, carry alignment,
-tick friction floor, and execution transaction costs.
-"""
+from typing import Dict, List
 
-from typing import Any, Dict, List
+import numpy as np
+
+STAGES = ["raw", "purity", "carry", "tick floor", "cost", "edge"]
 
 
-def compute_waterfall(
-    raw_gap_bps: float,
-    purity_gap_bps: float,
-    carry_gap_bps: float,
-    tick_floor_bps: float,
-    cost_bps: float,
-) -> List[Dict[str, Any]]:
-    """Compute relative-value spread waterfall stages from raw gap to net edge.
+def compute_waterfall(raw_gap_bps: float, purity_gap_bps: float, carry_gap_bps: float,
+                      tick_floor_bps: float, cost_bps: float) -> List[Dict[str, float]]:
+    """Return the six stages as dicts with stage, value (bps after the step)
+    and delta (bps change made by the step).
 
-    Stages:
-        1. raw:        Initial unadjusted quote gap in bps (quote-base scaling only)
-        2. purity:     Gap after adjusting for contract purity (e.g. 995 -> 999)
-        3. carry:      Gap after continuous carry alignment to reference expiry
-        4. tick floor: Discrete tick quantization friction
-        5. cost:       Total transaction costs (Exchange, CTT, GST, SEBI, Stamp)
-        6. edge:       Net executable edge floored at zero (never crosses zero)
-
-    Guarantees:
-        - Sign is preserved (both positive premium and negative discount supported).
-        - Edge is floored at zero and never crosses zero.
-        - Deltas sum exactly to final minus raw: sum(delta for stage != raw) == edge - raw.
-
-    Returns:
-        List of stage dicts containing:
-            - stage: Stage identifier string ('raw', 'purity', 'carry', 'tick floor', 'cost', 'edge')
-            - value: Basis points level at this stage (also keyed as 'bps')
-            - delta: Incremental contribution to final edge (also keyed as 'delta_bps')
+    raw, purity and carry are the gap after each adjustment. Tick floor and
+    cost then shrink the gap toward zero in that order, never past it, so the
+    edge keeps the sign of the carry-adjusted gap or is zero. The deltas of
+    purity through cost sum to edge - raw.
     """
-    raw = float(raw_gap_bps)
-    purity = float(purity_gap_bps)
-    carry = float(carry_gap_bps)
-    tick = abs(float(tick_floor_bps))
-    cost = abs(float(cost_bps))
+    tick, cost = abs(tick_floor_bps), abs(cost_bps)
+    gap = carry_gap_bps
+    sign = float(np.sign(gap))
+    tick_used = min(tick, abs(gap))
+    cost_used = min(cost, abs(gap) - tick_used)
+    after_tick = gap - sign * tick_used
+    edge = after_tick - sign * cost_used
 
-    delta_purity = purity - raw
-    delta_carry = carry - purity
-
-    # Edge calculation preserving sign and floored at zero (never crosses zero)
-    if carry >= 0:
-        # Positive spread: friction reduces edge down to zero
-        friction_total = tick + cost
-        if carry >= friction_total:
-            edge = carry - friction_total
-            delta_tick = -tick
-            delta_cost = -cost
-        else:
-            # Friction exceeds remaining spread: edge floored at zero
-            edge = 0.0
-            # Scale deductions proportionally so sum of deltas equals final - raw
-            remaining = carry
-            if friction_total > 0:
-                delta_tick = -(tick / friction_total) * remaining
-                delta_cost = -(cost / friction_total) * remaining
-            else:
-                delta_tick = 0.0
-                delta_cost = 0.0
-    else:
-        # Negative spread (discount): friction increases edge up to zero
-        friction_total = tick + cost
-        if abs(carry) >= friction_total:
-            edge = carry + friction_total
-            delta_tick = tick
-            delta_cost = cost
-        else:
-            edge = 0.0
-            remaining = abs(carry)
-            if friction_total > 0:
-                delta_tick = (tick / friction_total) * remaining
-                delta_cost = (cost / friction_total) * remaining
-            else:
-                delta_tick = 0.0
-                delta_cost = 0.0
-
-    stages = [
-        {"stage": "raw", "value": raw, "bps": raw, "delta": 0.0, "delta_bps": 0.0},
-        {"stage": "purity", "value": purity, "bps": purity, "delta": delta_purity, "delta_bps": delta_purity},
-        {"stage": "carry", "value": carry, "bps": carry, "delta": delta_carry, "delta_bps": delta_carry},
-        {"stage": "tick floor", "value": carry + delta_tick, "bps": carry + delta_tick, "delta": delta_tick, "delta_bps": delta_tick},
-        {"stage": "cost", "value": carry + delta_tick + delta_cost, "bps": carry + delta_tick + delta_cost, "delta": delta_cost, "delta_bps": delta_cost},
-        {"stage": "edge", "value": edge, "bps": edge, "delta": edge - raw, "delta_bps": edge - raw},
-    ]
-
-    return stages
+    values = [raw_gap_bps, purity_gap_bps, carry_gap_bps, after_tick, edge, edge]
+    deltas = [0.0, purity_gap_bps - raw_gap_bps, carry_gap_bps - purity_gap_bps,
+              after_tick - carry_gap_bps, edge - after_tick, 0.0]
+    return [{"stage": s, "value": v, "delta": d} for s, v, d in zip(STAGES, values, deltas)]
