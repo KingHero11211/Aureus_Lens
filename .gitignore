@@ -8,7 +8,7 @@ __pycache__/
 data/raw/
 public/assets/aistudio/
 *.csv
-!tests/fixtures/*.csv
+!tests/fixtures/**/*.csv
 
 # Local store, rebuilt from CSVs
 *.duckdb
