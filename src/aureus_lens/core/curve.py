@@ -40,7 +40,7 @@ def compute_carry(
     Audit Requirements:
         1. Exclude any GOLDM expiry inside its tender buffer ((expiry - trade_date).days <= buffer).
         2. Strictly zero look-ahead: only data for that specific trade date is used.
-        3. Requires at least 2 eligible liquid expiries (E1 < E2 with volume > 0 and oi > 0).
+        3. Requires at least 2 eligible liquid expiries (E1 < E2 with volume_lots > 0 and oi_lots > 0).
         4. carry_source must be one of: 'empirical', 'stale', 'theoretical', or 'none'.
            'none' indicates insufficient data and suppresses trading signals.
 
@@ -56,13 +56,13 @@ def compute_carry(
         SELECT
             expiry_date,
             close,
-            volume,
-            oi
+            volume_lots,
+            oi_lots
         FROM bhav
         WHERE date = ?::DATE
           AND symbol = 'GOLDM'
-          AND volume > 0
-          AND oi > 0
+          AND volume_lots > 0
+          AND oi_lots > 0
         ORDER BY expiry_date ASC;
     """
     rows = conn.execute(query, [trade_date]).fetchall()

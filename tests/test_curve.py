@@ -11,7 +11,18 @@ import pytest
 
 from src.aureus_lens.core.curve import adjust_to_expiry, compute_carry
 from src.aureus_lens.core.spread import compute_spread_bps
-from src.aureus_lens.store.db import init_db, upsert_bhav
+from src.aureus_lens.store.db import BHAV_COLUMNS, init_db
+
+# TODO(step 3): the prices below are invented; replace with real GOLDM rows.
+_RENAME = {"volume": "volume_lots", "value": "value_lakhs", "oi": "oi_lots",
+           "volume_value": "volume_000s"}
+
+
+def upsert_bhav(conn, df):
+    df = df.rename(columns=_RENAME).assign(zero_volume=False, source_file="test")
+    conn.register("incoming", df[BHAV_COLUMNS])
+    conn.execute("INSERT OR REPLACE INTO bhav SELECT * FROM incoming")
+    conn.unregister("incoming")
 
 
 @pytest.fixture
