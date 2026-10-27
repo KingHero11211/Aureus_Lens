@@ -1,6 +1,0 @@
-{
-  "name": "Aureus Lens",
-  "description": "Contract-native relative-value engine for MCX gold futures - Commodity Derivatives Intelligence",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
