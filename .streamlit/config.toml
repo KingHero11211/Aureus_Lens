@@ -1,0 +1,9 @@
+# Local only. Binding an address stops Streamlit from looking up the
+# machine's external IP, and usage stats are off, so the app makes no
+# outbound requests.
+[server]
+address = "localhost"
+headless = true
+
+[browser]
+gatherUsageStats = false
