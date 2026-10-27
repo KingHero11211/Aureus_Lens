@@ -1,74 +1,38 @@
-"""Price Normalization to ₹ per gram of 999 purity gold (PPG999).
+"""Convert quoted prices to rupees per gram of 999 gold."""
 
-Aureus Lens - Contract-Native Relative-Value Engine for MCX Gold Futures.
-Hack in Hills '26 - Phase 3
-"""
+from typing import Any, Mapping
 
-from typing import Any, Mapping, Union
 import pandas as pd
 
+from config import CONTRACT_SPECS
 
-def normalize_ppg999(row: Union[Mapping[str, Any], pd.Series, Any]) -> float:
-    """Normalize contract price to ₹ per gram of 999 purity gold (PPG999).
 
-    Contract Normalization Rules:
-        - GOLDM:      close / 10 * (999 / 995)   (100g lot, quoted per 10g, 995 purity adjusted to 999)
-        - GOLDTEN:    close / 10                 (10g lot, quoted per 10g, 999 purity)
-        - GOLDGUINEA: close / 8                  (8g lot, quoted per 8g, 999 purity)
-        - GOLDPETAL:  close / 1                  (1g lot, quoted per 1g, 999 purity)
-
-    Args:
-        row: Mapping (dict, pd.Series, or object) with 'symbol' and 'close' fields.
-
-    Returns:
-        float: Normalized price in ₹ per gram of 999 gold.
-    """
-    # Extract symbol
-    symbol_raw = None
-    if isinstance(row, (dict, Mapping, pd.Series)):
-        symbol_raw = row.get("symbol")
-        if symbol_raw is None:
-            symbol_raw = row.get("Symbol")
-    elif hasattr(row, "symbol"):
-        symbol_raw = getattr(row, "symbol")
-    elif hasattr(row, "Symbol"):
-        symbol_raw = getattr(row, "Symbol")
-
-    if symbol_raw is None:
-        raise ValueError(f"Missing 'symbol' in row: {row}")
-
-    symbol = str(symbol_raw).strip().upper()
-
-    # Extract close price
-    close_raw = None
-    if isinstance(row, (dict, Mapping, pd.Series)):
-        close_raw = row.get("close")
-        if close_raw is None:
-            close_raw = row.get("Close")
-    elif hasattr(row, "close"):
-        close_raw = getattr(row, "close")
-    elif hasattr(row, "Close"):
-        close_raw = getattr(row, "Close")
-
-    if close_raw is None:
-        raise ValueError(f"Missing 'close' in row: {row}")
-
+def _spec(symbol: str) -> Mapping[str, Any]:
     try:
-        close = float(close_raw)
-    except (ValueError, TypeError) as err:
-        raise ValueError(f"Invalid close price '{close_raw}' in row: {err}")
+        return CONTRACT_SPECS[symbol.strip().upper()]
+    except KeyError:
+        raise ValueError(f"Unsupported symbol {symbol!r}; expected one of {sorted(CONTRACT_SPECS)}")
 
-    # Conversion logic
-    if symbol == "GOLDM":
-        return (close / 10.0) * (999.0 / 995.0)
-    elif symbol == "GOLDTEN":
-        return close / 10.0
-    elif symbol == "GOLDGUINEA":
-        return close / 8.0
-    elif symbol == "GOLDPETAL":
-        return close / 1.0
-    else:
-        raise ValueError(
-            f"Unsupported contract symbol '{symbol}' for 999 purity normalization. "
-            "Supported symbols: GOLDM, GOLDTEN, GOLDGUINEA, GOLDPETAL."
-        )
+
+def per_gram(symbol: str, price: float) -> float:
+    """Return price in rupees per gram at the contract's own purity (quote unit removed)."""
+    return float(price) / _spec(symbol)["quote_grams"]
+
+
+def normalize_ppg999(row: Mapping[str, Any]) -> float:
+    """Return close in rupees per gram of 999 gold.
+
+    row needs "symbol" and "close". Lot size does not enter: only the quote
+    unit and purity (UNVERIFIED, see config) change the price per gram.
+    """
+    if row.get("symbol") is None or row.get("close") is None:
+        raise ValueError(f"row needs symbol and close: {dict(row)}")
+    spec = _spec(str(row["symbol"]))
+    return per_gram(str(row["symbol"]), row["close"]) * 999.0 / spec["purity"]
+
+
+def add_ppg999(df: pd.DataFrame, price_col: str = "close") -> pd.Series:
+    """Return a Series of price_col in rupees per gram of 999 gold for each row."""
+    quote = df["symbol"].map(lambda s: _spec(s)["quote_grams"])
+    purity = df["symbol"].map(lambda s: _spec(s)["purity"])
+    return df[price_col] / quote * 999.0 / purity

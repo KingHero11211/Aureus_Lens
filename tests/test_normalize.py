@@ -1,87 +1,44 @@
-"""Unit tests for price normalization (PPG999).
+"""Normalization to rupees per gram of 999 gold."""
 
-Verifies hand-checked values from MCX specifications:
-- GOLDM close 150,000 -> 15,060.30
-- GOLDTEN close 150,600 -> 15,060.00
-- GOLDGUINEA close 120,480 -> 15,060.00
-- GOLDPETAL close 15,060 -> 15,060.00
-"""
-
-import pandas as pd
 import pytest
 
-from src.aureus_lens.core.normalize import normalize_ppg999
+from src.aureus_lens.core.normalize import add_ppg999, normalize_ppg999, per_gram
+from tests.conftest import row
 
 
-def test_hand_checked_goldm_normalization():
-    """GOLDM close 150,000 -> 15,060.30 (quoted per 10g, 995 purity converted to 999)."""
-    row = {"symbol": "GOLDM", "close": 150000.0}
-    ppg = normalize_ppg999(row)
-    # (150000 / 10) * (999 / 995) = 15060.3015...
-    assert round(ppg, 2) == 15060.30
-    assert ppg == pytest.approx(15060.30, abs=0.01)
+@pytest.mark.parametrize("symbol, close, expected", [
+    ("GOLDM", 150000.0, 15060.30),     # 150000 / 10 x 999 / 995
+    ("GOLDTEN", 150600.0, 15060.00),   # 150600 / 10
+    ("GOLDGUINEA", 120480.0, 15060.00),  # 120480 / 8
+    ("GOLDPETAL", 15060.0, 15060.00),  # 15060 / 1
+])
+def test_hand_checked_values(symbol, close, expected):
+    assert round(normalize_ppg999({"symbol": symbol, "close": close}), 2) == expected
 
 
-def test_hand_checked_goldten_normalization():
-    """GOLDTEN close 150,600 -> 15,060.00 (quoted per 10g, 999 purity)."""
-    row = {"symbol": "GOLDTEN", "close": 150600.0}
-    ppg = normalize_ppg999(row)
-    assert round(ppg, 2) == 15060.00
+def test_real_rows_9_oct(oct_bhav):
+    # Closes from BhavCopyDateWise_09102026.csv, 30 Oct 2026 expiry.
+    assert normalize_ppg999(row(oct_bhav, "2026-10-09", "GOLDTEN", "2026-10-30")) == 15045.9
+    assert normalize_ppg999(row(oct_bhav, "2026-10-09", "GOLDGUINEA", "2026-10-30")) == 15093.75
+    assert normalize_ppg999(row(oct_bhav, "2026-10-09", "GOLDPETAL", "2026-10-30")) == 15101.0
+    goldm = row(oct_bhav, "2026-10-09", "GOLDM", "2026-11-05")
+    assert normalize_ppg999(goldm) == pytest.approx(150130 / 10 * 999 / 995)
 
 
-def test_hand_checked_goldguinea_normalization():
-    """GOLDGUINEA close 120,480 -> 15,060.00 (quoted per 8g, 999 purity)."""
-    row = {"symbol": "GOLDGUINEA", "close": 120480.0}
-    ppg = normalize_ppg999(row)
-    assert round(ppg, 2) == 15060.00
+def test_vectorized_matches_row_version(oct_bhav):
+    expected = oct_bhav.apply(normalize_ppg999, axis=1)
+    assert (add_ppg999(oct_bhav) - expected).abs().max() < 1e-9
 
 
-def test_hand_checked_goldpetal_normalization():
-    """GOLDPETAL close 15,060 -> 15,060.00 (quoted per 1g, 999 purity)."""
-    row = {"symbol": "GOLDPETAL", "close": 15060.0}
-    ppg = normalize_ppg999(row)
-    assert round(ppg, 2) == 15060.00
+def test_per_gram_ignores_purity():
+    assert per_gram("GOLDM", 150130.0) == 15013.0
 
 
-def test_normalize_with_pandas_series():
-    """Supports pandas Series and capitalized keys."""
-    series = pd.Series({"Symbol": "GOLDM", "Close": 76340.0})
-    ppg = normalize_ppg999(series)
-    expected = (76340.0 / 10.0) * (999.0 / 995.0)
-    assert ppg == pytest.approx(expected)
+def test_padded_symbol_accepted():
+    assert normalize_ppg999({"symbol": "GOLDPETAL   ", "close": 15101.0}) == 15101.0
 
 
-def test_normalize_with_custom_object():
-    """Supports objects with symbol and close attributes."""
-    class ContractQuote:
-        def __init__(self, symbol: str, close: float):
-            self.symbol = symbol
-            self.close = close
-
-    quote = ContractQuote("GOLDTEN", 76410.0)
-    ppg = normalize_ppg999(quote)
-    assert ppg == 7641.0
-
-
-def test_normalize_space_padded_symbol():
-    """Strips whitespace from symbol before normalizing."""
-    row = {"symbol": "  GOLDPETAL  ", "close": 7685.0}
-    ppg = normalize_ppg999(row)
-    assert ppg == 7685.0
-
-
-def test_normalize_unsupported_symbol_raises_value_error():
-    """Rejects non-target symbols (e.g. 1kg GOLD, SILVER)."""
-    row = {"symbol": "GOLD", "close": 7600000.0}
-    with pytest.raises(ValueError) as exc:
-        normalize_ppg999(row)
-    assert "Unsupported contract symbol 'GOLD'" in str(exc.value)
-
-
-def test_normalize_missing_fields_raises_value_error():
-    """Missing symbol or close raises ValueError."""
+@pytest.mark.parametrize("bad", [{"symbol": "GOLD", "close": 1.0}, {"close": 1.0}, {"symbol": "GOLDM"}])
+def test_bad_rows_raise(bad):
     with pytest.raises(ValueError):
-        normalize_ppg999({"close": 150000.0})
-
-    with pytest.raises(ValueError):
-        normalize_ppg999({"symbol": "GOLDM"})
+        normalize_ppg999(bad)
