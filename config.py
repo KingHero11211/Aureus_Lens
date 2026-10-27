@@ -83,6 +83,14 @@ UNVERIFIED_ITEMS: Dict[str, str] = {
         "Tender periods of 3 days for GOLDM and GOLDTEN, and the 3-day carry "
         "buffer, are not confirmed from an MCX circular."
     ),
+    "GOLDTEN_LAUNCH": (
+        "GOLDTEN is said to have launched on 1 April 2025, which limits how "
+        "far back a train period can start. No source has been opened."
+    ),
+    "GOLDM_TENDER_WINDOW": (
+        "The length of GOLDM's tender or entry window is not given in any "
+        "source. The carry curve uses STAGGERED_DELIVERY_DAYS = 3 calendar days."
+    ),
     "HOLIDAYS": (
         "No exchange holiday or festival dates are used. Expiry dates come "
         "from the files, not from a holiday calendar."
