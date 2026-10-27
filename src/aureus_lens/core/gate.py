@@ -1,137 +1,49 @@
-"""Executability Gate and Hard Suppressions Engine.
+"""Checks a pair must pass before a spread is reported as a signal."""
 
-Aureus Lens - Contract-Native Relative-Value Engine for MCX Gold Futures.
-Hack in Hills '26 - Phase 4 & Audit Refinement
-"""
+from typing import Any, List, Mapping, Optional, Tuple
 
-from datetime import date, datetime
-from typing import Any, List, Mapping, Optional, Tuple, Union
 import pandas as pd
 
+from config import CONTRACT_SPECS
 
-def _get_val(row: Union[Mapping[str, Any], pd.Series, Any], *keys: str, default: Any = None) -> Any:
-    """Helper to retrieve value from dict, Series, or object across case variants."""
-    for key in keys:
-        if isinstance(row, (dict, Mapping, pd.Series)):
-            if key in row and row[key] is not None:
-                return row[key]
-        elif hasattr(row, key):
-            val = getattr(row, key)
-            if val is not None:
-                return val
-    return default
+DEFAULT_COST_MARGIN = 2.0  # spread must be at least this multiple of cost
 
 
-def _parse_date(val: Any) -> Optional[date]:
-    """Parse date or return date object."""
-    if val is None:
-        return None
-    if isinstance(val, date) and not isinstance(val, datetime):
-        return val
-    if isinstance(val, datetime):
-        return val.date()
-    if isinstance(val, str):
-        val_clean = val.strip()
-        try:
-            if "/" in val_clean:
-                return datetime.strptime(val_clean, "%d/%m/%Y").date()
-            return datetime.strptime(val_clean, "%Y-%m-%d").date()
-        except ValueError:
-            return None
-    return None
+def _leg_reasons(leg: Mapping[str, Any], prev_oi: Optional[float]) -> List[str]:
+    sym = leg["symbol"]
+    reasons = []
+    days = (leg["expiry_date"] - leg["date"]).days
+    tender = CONTRACT_SPECS[sym]["tender_period_days"]
+    if days <= tender:
+        reasons.append(f"{sym} {leg['expiry_date']}: {days} days to expiry, inside {tender}-day tender buffer")
+    if leg["volume_lots"] == 0:
+        reasons.append(f"{sym} {leg['expiry_date']}: no trades (volume 0)")
+    elif leg["close"] == leg["previous_close"] and prev_oi is not None and leg["oi_lots"] == prev_oi:
+        reasons.append(f"{sym} {leg['expiry_date']}: close and OI unchanged from prior session")
+    return reasons
 
 
 def executability_gate(
-    row_small: Union[Mapping[str, Any], pd.Series, Any],
-    row_ref: Union[Mapping[str, Any], pd.Series, Any],
+    leg_a: Mapping[str, Any],
+    leg_b: Mapping[str, Any],
     spread_bps: float,
     cost_bps: float,
-    tender_days_threshold: int = 3,
+    margin: float = DEFAULT_COST_MARGIN,
+    carry_source: Optional[str] = None,
+    prev_oi_a: Optional[float] = None,
+    prev_oi_b: Optional[float] = None,
 ) -> Tuple[bool, List[str]]:
-    """Evaluate hard suppressions to determine trade executability.
+    """Return (passes, reasons). reasons lists every failing check; it is
+    empty when the pair passes.
 
-    Returns all failing reasons, not just the first.
-
-    Hard Suppression Rules:
-        1. Inside Tender Buffer:
-           Evaluates days to tender start (expiry_date - trade_date <= tender_days_threshold).
-        2. Stale Price:
-           volume == 0, OR (close == previous_close with unchanged OI).
-        3. Cost Hurdle:
-           |spread_bps| < 2 * cost_bps.
-
-    Returns:
-        (True, ["Executable"]) if all gates pass.
-        (False, [reason1, reason2, ...]) if any hard suppressions trigger.
+    Legs need date, symbol, expiry_date, close, previous_close, volume_lots
+    and oi_lots. carry_source "none" fails a pair that needs carry.
     """
-    reasons: List[str] = []
-
-    sym_small = str(_get_val(row_small, "symbol", "Symbol", default="SmallContract")).strip()
-    sym_ref = str(_get_val(row_ref, "symbol", "Symbol", default="RefContract")).strip()
-
-    # 1. Tender Buffer Check
-    for row, sym in [(row_small, sym_small), (row_ref, sym_ref)]:
-        days_to_expiry = _get_val(row, "days_to_expiry", "days_to_exp")
-        trade_d = _parse_date(_get_val(row, "date", "Date"))
-        expiry_d = _parse_date(_get_val(row, "expiry_date", "ExpiryDate"))
-
-        days_remaining = None
-        if days_to_expiry is not None:
-            days_remaining = float(days_to_expiry)
-        elif trade_d and expiry_d:
-            days_remaining = (expiry_d - trade_d).days
-
-        if days_remaining is not None and days_remaining <= tender_days_threshold:
-            reasons.append(
-                f"Inside tender buffer for {sym} ({days_remaining:.0f} days to expiry <= {tender_days_threshold} days threshold)"
-            )
-
-    # 2. Stale Price Check: volume == 0, OR (close == previous_close with unchanged OI)
-    for row, sym in [(row_small, sym_small), (row_ref, sym_ref)]:
-        vol = _get_val(row, "volume", "Volume")
-        close_px = _get_val(row, "close", "Close")
-        prev_close_px = _get_val(row, "previous_close", "PreviousClose", "prev_close")
-        oi = _get_val(row, "oi", "OpenInterest", "OI")
-        prev_oi = _get_val(row, "previous_oi", "prev_oi", "PrevOI")
-
-        is_stale = False
-        stale_detail = ""
-
-        if vol is not None:
-            try:
-                v_num = float(vol)
-                if v_num == 0.0:
-                    is_stale = True
-                    stale_detail = f"volume == 0 on {sym}"
-            except (ValueError, TypeError):
-                pass
-
-        if not is_stale and close_px is not None and prev_close_px is not None:
-            try:
-                c_num = float(close_px)
-                pc_num = float(prev_close_px)
-                if c_num == pc_num:
-                    if oi is not None and prev_oi is not None:
-                        if float(oi) == float(prev_oi):
-                            is_stale = True
-                            stale_detail = f"close unchanged ({c_num}) with unchanged OI ({oi}) on {sym}"
-                    else:
-                        # If prev_oi not provided, unchanged close with 0 volume was already checked
-                        pass
-            except (ValueError, TypeError):
-                pass
-
-        if is_stale:
-            reasons.append(f"Stale price: {stale_detail}")
-
-    # 3. Minimum Cost Hurdle: |spread_bps| < 2 * cost_bps
-    hurdle = 2.0 * float(cost_bps)
-    if abs(float(spread_bps)) < hurdle:
-        reasons.append(
-            f"Sub-hurdle spread (|{spread_bps:.2f}| bps < 2x cost {hurdle:.2f} bps)"
-        )
-
-    if not reasons:
-        return True, ["Executable"]
-
-    return False, reasons
+    reasons = _leg_reasons(leg_a, prev_oi_a) + _leg_reasons(leg_b, prev_oi_b)
+    if carry_source == "none":
+        reasons.append("no carry estimate for expiry alignment")
+    if pd.isna(spread_bps):
+        reasons.append("spread not available")
+    elif abs(spread_bps) < margin * cost_bps:
+        reasons.append(f"|spread| {abs(spread_bps):.2f} bps below {margin:g} x cost {cost_bps:.2f} bps")
+    return not reasons, reasons
