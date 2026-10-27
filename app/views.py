@@ -329,7 +329,9 @@ def _reason_kind(reason: str) -> str:
 
 
 def pair_options(d: Derived, date) -> pd.DataFrame:
-    p = d.pairs[d.pairs["date"] == date]
+    p = d.pairs[d.pairs["date"] == date].copy()
+    p["order"] = (p["kind"] != "small_small").astype(int)  # small-small pairs first
+    p = p.sort_values(["order", "leg_a", "leg_b", "expiry_a"])
     return p[["kind", "leg_a", "expiry_a", "leg_b", "expiry_b"]].reset_index(drop=True)
 
 

@@ -264,3 +264,8 @@ def test_waterfall_goldm_pair_hidden_below_carry_minimum(oct_store):
                              "GOLDTEN", date(2026, 10, 30), "GOLDM")
     assert not v.tables
     assert v.messages == ["Carry step not shown: carry insufficient history (4 of 5 sessions)"]
+
+
+def test_waterfall_pair_options_list_small_small_first(oct_store):
+    kinds = views.pair_options(oct_store, date(2026, 10, 9))["kind"].tolist()
+    assert kinds == ["small_small"] * 18 + ["small_goldm"] * 18
