@@ -221,3 +221,87 @@ Notes:
 $ python -m pytest -p no:cacheprovider -q -rs
 102 passed in 30.80s
 ```
+
+## Step 5: pre-registration and dashboard
+
+The store was rebuilt from the October 2026 files only (5, 6, 7 and 9 Oct;
+the 8 Oct file is refused). The 21 Jan 2026 files stay in data/raw/ for the
+loader tests but are not in the store.
+
+| # | Check | Evidence | Result |
+|---|-------|----------|--------|
+| 5.1 | PREREGISTRATION.md committed before the dashboard | commit 8702bc2 precedes 24750c1 and f3a305a | PASS |
+| 5.2 | Train, validation and test dates are placeholders; no `pre-registration` tag | file text; `git tag` lists nothing | PASS |
+| 5.3 | Hypotheses H0 to H5 written as in the brief | brief text with H0 to H5 not available | NOT RUN |
+| 5.4 | Every view shows source, date range and unit; carry_source on scanner and waterfall | `test_every_view_has_source_dates_and_unit`, `test_carry_source_shown_where_carry_is_used` | PASS |
+| 5.5 | Below 60 sessions the z-score shows "insufficient history (X of 60 sessions)" and no number | `test_zscore_column_shows_insufficient_history_not_numbers` | PASS |
+| 5.6 | No signal below the window, even if the code path marks one | `test_no_signal_below_window_even_if_code_would_signal` | PASS |
+| 5.7 | "No actionable signal" with reasons when nothing signals | `test_no_actionable_signal_with_reasons` | PASS |
+| 5.8 | Small-small pairs listed first; GOLDM pairs labelled "depends on purity assumption" | `test_small_small_first_and_goldm_labelled` | PASS |
+| 5.9 | Gate shows every failing reason | `test_all_failing_reasons_listed` | PASS |
+| 5.10 | Waterfall stages in order, sign kept, edge floored at zero | `test_waterfall_stage_order_and_values`, step 3 waterfall tests | PASS |
+| 5.11 | Coverage flags the missing weekday as unchecked | `test_coverage_flags_missing_weekday_as_unchecked` | PASS |
+| 5.12 | Backtest page shows only "Not run" and cost rates marked UNVERIFIED | `test_backtest_lists_every_cost_rate_unverified`, page dump | PASS |
+| 5.13 | Empty state on every page with no store | `test_empty_store_shows_empty_state_on_every_page`; AppTest run with the store moved away, 0 exceptions on all six pages | PASS |
+| 5.14 | Unreconciled MCX figure appears on no page | `test_no_view_shows_unreconciled_mcx_figure` | PASS |
+| 5.15 | All six pages render in Streamlit without exceptions | AppTest run below | PASS |
+| 5.16 | `streamlit run app/dashboard.py` starts and serves the page | health endpoint `ok`, page HTTP 200 | PASS |
+| 5.17 | No network calls from the app | grep below; Streamlit external-IP lookup disabled by `.streamlit/config.toml` | PASS for project code and Streamlit start-up; Streamlit internals beyond start-up not audited |
+| 5.18 | Fresh clone shows data | the store is not committed; a fresh clone shows the empty state until Step 6 adds a snapshot | NOT RUN |
+| 5.19 | Tests do not write to data/ or docs/ | smoke test checks store mtime unchanged; other view tests use in-memory stores | PASS |
+
+### AppTest render, real store
+
+```
+===== Data Health | exceptions: 0 | plotly charts: 0
+===== Normalized View | exceptions: 0 | plotly charts: 1
+===== Spread Scanner | exceptions: 0 | plotly charts: 0
+msg: No actionable signal. Reasons: history below 60 sessions (4 of 60); below 2x cost: 8 pairs
+===== Waterfall | exceptions: 0 | plotly charts: 1
+===== Coverage | exceptions: 0 | plotly charts: 0
+===== Backtest | exceptions: 0 | plotly charts: 0
+msg: Not run: awaiting contiguous history and pre-registration
+```
+
+### AppTest render, no store
+
+```
+NO STORE | Data Health | exceptions: 0 | ['The store has no rows. Load CSV files with: python -m scripts.load_csv data/raw/*.csv']
+NO STORE | Normalized View | exceptions: 0 | [same]
+NO STORE | Spread Scanner | exceptions: 0 | [same]
+NO STORE | Waterfall | exceptions: 0 | [same]
+NO STORE | Coverage | exceptions: 0 | [same]
+NO STORE | Backtest | exceptions: 0 | ['Not run: awaiting contiguous history and pre-registration']
+```
+
+### Server start
+
+Before `.streamlit/config.toml`, the start-up log printed
+`External URL: http://104.28.225.15:8599`, which Streamlit gets from
+`checkip.amazonaws.com` (`streamlit/net_util.py`, called from
+`web/bootstrap.py` only when `server.address` is not set). After:
+
+```
+$ streamlit run app/dashboard.py --server.port 8599
+Uvicorn server started on localhost:8599
+  URL: http://localhost:8599
+$ curl localhost:8599/_stcore/health
+ok
+$ curl -o /dev/null -w "%{http_code}" localhost:8599/
+200
+```
+
+### Network grep
+
+```
+$ grep -rnE "requests|urllib|http\.client|socket|httpx|mcxindia" --include=*.py app src scripts config.py
+$ echo $?
+1
+```
+
+### Test run
+
+```
+$ python -m pytest -p no:cacheprovider -v -rs
+============================ 120 passed in 40.34s =============================
+```
