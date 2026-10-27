@@ -1,91 +1,95 @@
-"""Aureus Lens - Central Configuration.
+"""Contract facts, cost rates and paths for Aureus Lens.
 
-Contract-Native Relative-Value Engine for MCX Gold Futures.
-Hack in Hills '26 - Problem Statement 03 (Commodity Derivatives Intelligence)
+Values are either verified against the bhavcopy files in data/raw/ or listed
+in UNVERIFIED_ITEMS. Anything in UNVERIFIED_ITEMS is a placeholder and must
+not be presented as fact.
 """
 
 from pathlib import Path
 from typing import Any, Dict, Set
 
-# --- Project Paths ---
 PROJECT_ROOT: Path = Path(__file__).resolve().parent
 DATA_DIR: Path = PROJECT_ROOT / "data"
 RAW_DIR: Path = DATA_DIR / "raw"  # manually downloaded CSVs, not committed
 
-# --- Contract Symbols ---
-# Confirmed target contracts for relative-value analysis.
-# Note: "GOLD" (1kg) is deliberately EXCLUDED unless explicitly verified.
 TARGET_SYMBOLS: Set[str] = {"GOLDM", "GOLDTEN", "GOLDGUINEA", "GOLDPETAL"}
 
-# --- Contract Lifecycle & Specifications (MCX Circulars) ---
+# Verified: lot_size_grams and quote_grams reproduce Value(Lacs) to within
+# 0.5% for every active gold future on 9 Oct 2026 (tests/test_csv_loader.py).
+# purity, tick_size and tender_period_days are UNVERIFIED; see below.
 CONTRACT_SPECS: Dict[str, Dict[str, Any]] = {
     "GOLDM": {
-        "description": "Gold Mini",
         "lot_size_grams": 100,
+        "quote_grams": 10,
         "purity": 995,
-        "price_quote_unit": "10 g",
-        "tick_size": 1.0,  # Re. 1 / 10g
-        "expiry_rule": "5th of expiry month (preceding working day if holiday)",
-        "tender_period_days": 3,  # Last 3 trading days including expiry day
+        "tick_size": 1.0,
+        "expiry_rule": "5th of the month, or the preceding working day",
+        "tender_period_days": 3,
     },
     "GOLDTEN": {
-        "description": "Gold Ten",
         "lot_size_grams": 10,
+        "quote_grams": 10,
         "purity": 999,
-        "price_quote_unit": "10 g",
         "tick_size": 1.0,
-        "expiry_rule": "Last calendar day of expiry month",
-        "tender_period_days": 3,  # Last 3 trading days including expiry day
+        "expiry_rule": "last calendar day of the month, or the preceding working day",
+        "tender_period_days": 3,
     },
     "GOLDGUINEA": {
-        "description": "Gold Guinea",
         "lot_size_grams": 8,
+        "quote_grams": 8,
         "purity": 999,
-        "price_quote_unit": "8 g",
         "tick_size": 1.0,
-        "expiry_rule": "Last calendar day of expiry month",
-        "tender_period_days": 3,  # Verified 3-day tender window
+        "expiry_rule": "last calendar day of the month, or the preceding working day",
+        "tender_period_days": 3,
     },
     "GOLDPETAL": {
-        "description": "Gold Petal",
         "lot_size_grams": 1,
+        "quote_grams": 1,
         "purity": 999,
-        "price_quote_unit": "1 g",
         "tick_size": 1.0,
-        "expiry_rule": "Last calendar day of expiry month",
-        "tender_period_days": 5,  # Conservative unknown value (5 days) until confirmed by MCX circular
-        "verified": False,
+        "expiry_rule": "last calendar day of the month, or the preceding working day",
+        "tender_period_days": 5,  # conservative placeholder, MCX may use 3
     },
 }
 
-# Common tender period window (staggered delivery tender period)
+# Expiries this many calendar days away or closer are excluded from carry.
 STAGGERED_DELIVERY_DAYS: int = 3
 
-# --- Transaction Cost Model (MCX Circulars & Statutory) ---
-# Standard discount broker commodity rate: min(0.03% of turnover, Rs 20 per executed order)
-BROKERAGE_RATE_PCT: float = 0.0003  # 0.03%
-BROKERAGE_MAX_PER_ORDER: float = 20.0  # ₹20 cap
-
-# Exchange transaction charge: 0.0021% of turnover
+# Cost rates. All UNVERIFIED until confirmed from MCX circulars. They are
+# set so that Rs 1,000,000 turnover costs 69.56 (buy) and 149.56 (sell).
+BROKERAGE_RATE_PCT: float = 0.0003
+BROKERAGE_MAX_PER_ORDER: float = 20.0  # rupees
 EXCHANGE_TRANSACTION_CHARGE_PCT: float = 0.000021
-
-# Commodities Transaction Tax (CTT): 0.01% on sell side (non-agri)
 CTT_SELL_PCT: float = 0.0001
-
-# Goods and Services Tax (GST): 18% on (brokerage + exchange charges + SEBI fee)
-GST_PCT: float = 0.18
-
-# SEBI Turnover Fee: ₹10 per crore (10 / 10,000,000 = 1e-6)
-SEBI_TURNOVER_FEE_PCT: float = 10.0 / 10_000_000.0
-
-# Stamp Duty: 0.002% on buy side
+GST_PCT: float = 0.18  # on brokerage + exchange charge + SEBI fee
+SEBI_TURNOVER_FEE_PCT: float = 10.0 / 10_000_000.0  # Rs 10 per crore
 STAMP_DUTY_BUY_PCT: float = 0.00002
 
-# --- Unverified Facts Registry (Displayed prominently on Dashboard) ---
 UNVERIFIED_ITEMS: Dict[str, str] = {
+    "MCX_POST_21JAN2026_VALUE": (
+        "An MCX post gave Rs 5,563 crore for 21 Jan 2026. The bhavcopy file sums "
+        "to Rs 8,239.66 crore for GOLDTEN, GOLDGUINEA and GOLDPETAL. The post "
+        "figure is not used anywhere."
+    ),
     "GOLDPETAL_TENDER_DAYS": (
-        "GOLDPETAL tender period is set to conservative default of 5 days pending "
-        "direct MCX physical delivery circular confirmation."
+        "GOLDPETAL tender period may be 3 or 5 days. 5 is used as a "
+        "conservative placeholder."
+    ),
+    "TENDER_DAYS_OTHERS": (
+        "Tender periods of 3 days for GOLDM, GOLDTEN and GOLDGUINEA, and the "
+        "3-day carry buffer, are not confirmed from an MCX circular."
+    ),
+    "COST_RATES": (
+        "Exchange charge, CTT, stamp duty, SEBI fee, GST and brokerage rates "
+        "are not confirmed from MCX circulars or a broker schedule."
+    ),
+    "TICK_SIZES": (
+        "Tick sizes are set to 1.0 for all four contracts. GOLDTEN, GOLDGUINEA "
+        "and GOLDPETAL are explicitly unconfirmed; GOLDM has no source either."
+    ),
+    "PURITY": (
+        "GOLDM purity 995 and 999 for the others are not confirmed from the "
+        "contract specification. The 999/995 factor matches the hand-checked "
+        "normalization value only."
     ),
 }
-
