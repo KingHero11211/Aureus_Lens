@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from config import CONTRACT_SPECS, RAW_DIR
+from config import RAW_DIR
 from scripts.load_csv import main as load_csv_main
 from src.aureus_lens.ingest.csv_loader import (
     FORMAT_COLUMNS,
@@ -19,6 +19,7 @@ from src.aureus_lens.ingest.csv_loader import (
     detect_format,
     load_csv,
 )
+from src.aureus_lens.reconcile import implied_value_lakhs
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SAMPLE_A = FIXTURES / "format_a_09102026_sample.csv"
@@ -31,13 +32,6 @@ FULL_B_2101 = RAW_DIR / "20260121_MCX.csv"
 
 def needs(path: Path):
     return pytest.mark.skipif(not path.exists(), reason=f"NOT RUN: {path.name} not in data/raw/")
-
-
-def implied_value_lakhs(rows: pd.DataFrame) -> pd.Series:
-    """Lots x lot grams x close per quote gram, in lakhs of rupees."""
-    lot_g = rows["symbol"].map(lambda s: CONTRACT_SPECS[s]["lot_size_grams"])
-    quote_g = rows["symbol"].map(lambda s: CONTRACT_SPECS[s]["quote_grams"])
-    return rows["volume_lots"] * lot_g * rows["close"] / quote_g / 1e5
 
 
 def source_row_count(path: Path) -> int:
@@ -207,7 +201,7 @@ def test_both_formats_agree_for_21012026():
 # CLI
 
 def test_cli_reports_both_samples(capsys):
-    assert load_csv_main([str(SAMPLE_A), str(SAMPLE_B)]) == 0
+    assert load_csv_main([str(SAMPLE_A), str(SAMPLE_B), "--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "format:  A" in out and "format:  B" in out
     assert "GOLD 1 kg contract excluded" in out
@@ -216,5 +210,5 @@ def test_cli_reports_both_samples(capsys):
 def test_cli_returns_error_on_unknown_header(tmp_path, capsys):
     bad = tmp_path / "bad.csv"
     bad.write_text("foo,bar\n1,2\n")
-    assert load_csv_main([str(bad)]) == 1
+    assert load_csv_main([str(bad), "--dry-run"]) == 1
     assert "missing columns" in capsys.readouterr().out
