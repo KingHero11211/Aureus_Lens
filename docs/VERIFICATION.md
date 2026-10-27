@@ -52,3 +52,63 @@ $ echo $?
 ```
 
 Exit code 1 means no matches.
+
+## Step 1: CSV loader
+
+| # | Check | Test | Result |
+|---|-------|------|--------|
+| 1.1 | Format A and B detected from header | `test_detects_format_a`, `test_detects_format_b` | PASS |
+| 1.2 | Unknown header raises ValueError naming missing columns | `test_unknown_header_*`, `test_cli_returns_error_on_unknown_header` | PASS |
+| 1.3 | Only FUTCOM rows for the four targets kept; OPTFUT, FUTIDX, OPTIDX and GOLD 1 kg rejected with a reason | `test_keeps_only_target_futures`, `test_rejects_have_reasons` | PASS |
+| 1.4 | No row dropped silently (kept + rejected = source rows) | `test_every_source_row_is_kept_or_rejected` | PASS |
+| 1.5 | Space padding stripped | `test_space_padding_stripped` | PASS |
+| 1.6 | Blank OHLC (format A) becomes NaN, row kept with zero_volume True | `test_format_a_blank_ohlc_is_nan_and_row_kept` | PASS |
+| 1.7 | Zero OHLC on a zero-volume row (format B) becomes NaN | `test_format_b_zero_ohlc_on_zero_volume_is_nan` | PASS |
+| 1.8 | Value(Lacs) within 0.5% of lots x lot grams x close per quote unit, 9 Oct 2026 sample rows | `test_value_matches_lots_times_close_in_sample` | PASS |
+| 1.9 | Same check, all 23 active target futures in the full 9 Oct 2026 file | `test_value_matches_lots_times_close_full_09102026` | PASS locally; NOT RUN where the file is absent (CI) |
+| 1.10 | GOLDTEN + GOLDGUINEA + GOLDPETAL value on 21 Jan 2026 = 8,239.66 crore, in both the format A and format B full files | `test_small_contract_value_21012026` | PASS locally; NOT RUN where the files are absent (CI) |
+| 1.11 | Format A and format B files for 21 Jan 2026 give identical rows | `test_both_formats_agree_for_21012026` | PASS locally; NOT RUN where the files are absent (CI) |
+
+Fixtures are rows copied unchanged from the source files. Each fixture line
+was checked against its source with `grep -qxF` and none were missing.
+
+Observation, not a documented rule: format B writes `0` for Open, High and
+Low on zero-volume rows where format A leaves them blank (GOLD 1 kg,
+expiry 4 Dec 2026, in both 21 Jan 2026 files).
+
+### Test run with full files present
+
+```
+$ python -m pytest -p no:cacheprovider -rs -v
+...
+tests/test_csv_loader.py::test_value_matches_lots_times_close_full_09102026 PASSED
+tests/test_csv_loader.py::test_small_contract_value_21012026[path0] PASSED
+tests/test_csv_loader.py::test_small_contract_value_21012026[path1] PASSED
+tests/test_csv_loader.py::test_both_formats_agree_for_21012026 PASSED
+...
+============================= 57 passed in 5.70s ==============================
+```
+
+### Test run with data/raw/ removed
+
+```
+$ python -m pytest -p no:cacheprovider -q -rs tests/test_csv_loader.py
+..................ssss..                                                 [100%]
+SKIPPED [1] tests\test_csv_loader.py:180: NOT RUN: BhavCopyDateWise_09102026.csv not in data/raw/
+SKIPPED [1] tests\test_csv_loader.py:189: NOT RUN: BhavCopyDateWise_21012026.csv not in data/raw/
+SKIPPED [1] tests\test_csv_loader.py:189: NOT RUN: 20260121_MCX.csv not in data/raw/
+SKIPPED [1] tests\test_csv_loader.py:199: NOT RUN: 20260121_MCX.csv not in data/raw/
+20 passed, 4 skipped in 1.75s
+```
+
+### Loader on full files (reject counts)
+
+```
+data/raw/20260121_MCX.csv               B  24 kept  59666 rejected
+  {'instrument OPTFUT': 58464, 'instrument OPTIDX': 1078, 'symbol not targeted': 110,
+   'instrument FUTIDX': 8, 'GOLD 1 kg contract excluded': 6}
+data/raw/BhavCopyDateWise_21012026.csv  A  24 kept  59666 rejected  (same counts)
+data/raw/BhavCopyDateWise_09102026.csv  A  24 kept  15345 rejected
+  {'instrument OPTFUT': 14616, 'instrument OPTIDX': 584, 'symbol not targeted': 134,
+   'instrument FUTIDX': 6, 'GOLD 1 kg contract excluded': 5}
+```
