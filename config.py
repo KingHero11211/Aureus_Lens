@@ -75,9 +75,17 @@ UNVERIFIED_ITEMS: Dict[str, str] = {
         "GOLDPETAL tender period may be 3 or 5 days. 5 is used as a "
         "conservative placeholder."
     ),
+    "GOLDGUINEA_TENDER_DAYS": (
+        "GOLDGUINEA tender period of 3 days comes from a secondary summary of "
+        "MCX circular MCX/TRD/456/2025. The circular PDF has not been read."
+    ),
     "TENDER_DAYS_OTHERS": (
-        "Tender periods of 3 days for GOLDM, GOLDTEN and GOLDGUINEA, and the "
-        "3-day carry buffer, are not confirmed from an MCX circular."
+        "Tender periods of 3 days for GOLDM and GOLDTEN, and the 3-day carry "
+        "buffer, are not confirmed from an MCX circular."
+    ),
+    "HOLIDAYS": (
+        "No exchange holiday or festival dates are used. Expiry dates come "
+        "from the files, not from a holiday calendar."
     ),
     "COST_RATES": (
         "Exchange charge, CTT, stamp duty, SEBI fee, GST and brokerage rates "
