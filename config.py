@@ -10,24 +10,7 @@ from typing import Any, Dict, Set
 # --- Project Paths ---
 PROJECT_ROOT: Path = Path(__file__).resolve().parent
 DATA_DIR: Path = PROJECT_ROOT / "data"
-CACHE_DIR: Path = DATA_DIR / "raw"
-
-# --- API Endpoints ---
-BHAVCOPY_PAGE_URL: str = "https://www.mcxindia.com/market-data/bhavcopy"
-BHAVCOPY_API_URL: str = "https://www.mcxindia.com/market-data/bhavcopy/GetDateWiseBhavCopy"
-
-# --- HTTP Headers ---
-DEFAULT_HEADERS: Dict[str, str] = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json, text/javascript, */*; q=0.01",
-    "Accept-Language": "en-US,en;q=0.9",
-    "X-Requested-With": "XMLHttpRequest",
-    "Referer": BHAVCOPY_PAGE_URL,
-    "Origin": "https://www.mcxindia.com",
-}
+RAW_DIR: Path = DATA_DIR / "raw"  # manually downloaded CSVs, not committed
 
 # --- Contract Symbols ---
 # Confirmed target contracts for relative-value analysis.

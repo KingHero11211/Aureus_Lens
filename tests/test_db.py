@@ -16,7 +16,6 @@ import duckdb
 import pandas as pd
 import pytest
 
-from src.aureus_lens.ingest.backfill import backfill_date_range
 from src.aureus_lens.store.db import (
     check_continuity,
     init_db,
@@ -239,49 +238,3 @@ def test_update_coverage(mem_db):
     assert len(coverage_rows) == 2
     assert coverage_rows[0][3] == 1
     assert coverage_rows[1][3] == 1
-
-
-def test_backfill_skips_weekends_and_runs(tmp_path: Path, monkeypatch):
-    """backfill_date_range skips weekends and processes cached trading days without external network calls."""
-    db_file = str(tmp_path / "test_aureus.duckdb")
-    conn = init_db(db_file)
-
-    def mock_fetch(d_str, *args, **kwargs):
-        return {
-            "Date": "10/09/2026",
-            "Data": [
-                {
-                    "InstrumentName": "FUTCOM",
-                    "Symbol": "GOLDM",
-                    "ExpiryDate": "05NOV2026",
-                    "Date": "10/09/2026",
-                    "Open": "76120.00",
-                    "High": "76500.00",
-                    "Low": "75980.00",
-                    "Close": "76340.00",
-                    "PreviousClose": "76050.00",
-                    "Volume": "1250",
-                    "Value": "9542.50",
-                    "OpenInterest": "3420",
-                    "VolumeInThousands": "125.000 GRMS ",
-                }
-            ],
-        }
-
-    monkeypatch.setattr("src.aureus_lens.ingest.backfill.fetch_bhavcopy", mock_fetch)
-
-    stats = backfill_date_range(
-        start_date="2026-10-09",
-        end_date="2026-10-11",
-        conn=conn,
-        rate_limit_delay=0.0,
-    )
-
-    assert stats["skipped_weekends"] == 2
-    assert stats["processed_days"] == 1
-
-    total_bhav = conn.execute("SELECT count(*) FROM bhav").fetchone()[0]
-    assert total_bhav > 0
-
-    conn.close()
-
