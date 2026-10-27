@@ -1,22 +1,14 @@
-"""Unit tests for Section I: Statutory Transaction Cost Model.
+"""Cost model against the hand-checked example in config.
 
-Verifies exact hand-checked benchmarks:
-- Turnover ₹1,000,000:
-  - Brokerage: min(0.03%, ₹20) = ₹20.00
-  - Exchange: 0.0021% = ₹21.00
-  - SEBI: ₹10/crore = ₹1.00
-  - GST: 18% of ₹42 = ₹7.56
-  - Stamp duty (buy): 0.002% = ₹20.00
-  - Buy Total: ₹69.56
-  - CTT (sell): 0.01% = ₹100.00
-  - Sell Total: ₹149.56
-  - Round-trip Total: ₹219.12
+The rates are UNVERIFIED; these tests check the arithmetic, not the rates.
+At Rs 1,000,000: buy 69.56, sell 149.56, round trip 219.12.
 """
 
 import pytest
 
 from src.aureus_lens.core.costs import (
     compute_buy_costs,
+    pair_cost_bps,
     compute_roundtrip_costs,
     compute_sell_costs,
 )
@@ -55,3 +47,9 @@ def test_hand_checked_turnover_1m_roundtrip_costs():
     assert res["total_rupees"] == 219.12
     # 219.12 / 1,000,000 * 10,000 = 2.1912 bps
     assert res["total_bps"] == pytest.approx(2.19, abs=0.01)
+
+
+def test_pair_cost_bps_hand_checked():
+    # Two legs, each bought and sold once at Rs 1,000,000:
+    # 2 x (69.56 + 149.56) / 1,000,000 x 10,000 = 4.3824 bps
+    assert pair_cost_bps(1_000_000.0) == pytest.approx(4.3824)
