@@ -161,3 +161,19 @@ def test_notes_show_small_contract_total_for_21012026(tmp_path):
     notes = tmp_path / "n.md"
     load_main([str(p) for p in FULL_FILES] + ["--db", str(tmp_path / "s.duckdb"), "--notes", str(notes)])
     assert "| 2026-01-21 | 8239.66 |" in notes.read_text()
+
+
+def test_file_named_for_another_date_is_refused(tmp_path, capsys):
+    # The real 8 Oct download held 9 Oct rows. Reproduce with the 9 Oct sample.
+    misnamed = tmp_path / "BhavCopyDateWise_08102026.csv"
+    misnamed.write_bytes(SAMPLE_A.read_bytes())
+    db, notes = tmp_path / "s.duckdb", tmp_path / "n.md"
+    for _ in range(2):
+        assert load_main([str(misnamed), "--db", str(db), "--notes", str(notes)]) == 1
+    assert "file name says 2026-10-08, rows are dated 2026-10-09; not stored" in capsys.readouterr().out
+    conn = init_db(db)
+    assert conn.execute("SELECT COUNT(*) FROM bhav").fetchall()[0][0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM data_health WHERE event = 'file_refused'").fetchall()[0][0] == 1
+    conn.close()
+    assert "BhavCopyDateWise_08102026.csv: file name says" in notes.read_text()

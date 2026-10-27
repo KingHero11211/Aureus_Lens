@@ -120,7 +120,8 @@ def _table(df: pd.DataFrame) -> List[str]:
 
 
 def render_data_notes(bhav: pd.DataFrame, load_log: pd.DataFrame,
-                      reject_counts: pd.DataFrame, cont: pd.DataFrame) -> str:
+                      reject_counts: pd.DataFrame, cont: pd.DataFrame,
+                      refused: pd.DataFrame = None) -> str:
     """Return docs/data_notes.md as a string. Output depends only on the inputs."""
     out = [
         "# Data notes",
@@ -131,6 +132,8 @@ def render_data_notes(bhav: pd.DataFrame, load_log: pd.DataFrame,
         "",
     ]
     out += _table(load_log.sort_values("source_file"))
+    out += ["", "## Files not stored", ""]
+    out += _table(refused if refused is not None else pd.DataFrame())
     out += ["", "## Rejected rows by reason", ""]
     out += _table(reject_counts.sort_values(["source_file", "reason"]))
 

@@ -4,9 +4,11 @@ Format A is the MCX website download (BhavCopyDateWise_DDMMYYYY.csv).
 Format B is the Samco download (YYYYMMDD_MCX.csv). Both map to SCHEMA.
 """
 
+import re
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -75,6 +77,26 @@ class LoadResult:
     format: str
     rows: pd.DataFrame     # SCHEMA columns, target futures only
     rejects: pd.DataFrame  # REJECT_COLUMNS, one row per rejected source row
+
+
+# File name patterns of the two downloads, and the date format inside them.
+FILENAME_DATES = [
+    (re.compile(r"BhavCopyDateWise_(\d{8})", re.I), "%d%m%Y"),
+    (re.compile(r"^(\d{8})_MCX", re.I), "%Y%m%d"),
+]
+
+
+def filename_date(path: Union[str, Path]) -> Optional[date]:
+    """Return the trade date encoded in a download's file name, or None."""
+    name = Path(path).name
+    for pattern, fmt in FILENAME_DATES:
+        m = pattern.search(name)
+        if m:
+            try:
+                return datetime.strptime(m.group(1), fmt).date()
+            except ValueError:
+                return None
+    return None
 
 
 def detect_format(columns: List[str]) -> str:

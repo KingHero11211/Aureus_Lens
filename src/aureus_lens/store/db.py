@@ -117,3 +117,12 @@ def replace_health_events(
     conn.register("events", events[["date", "symbol", "expiry_date", "event", "detail"]])
     conn.execute("INSERT INTO data_health SELECT * FROM events")
     conn.unregister("events")
+
+
+def log_refused_file(conn: duckdb.DuckDBPyConnection, source: str,
+                     named_date, detail: str) -> None:
+    """Record a file that was parsed but not stored, replacing any earlier record."""
+    conn.execute("DELETE FROM data_health WHERE event = 'file_refused' AND detail LIKE ?",
+                 [source + ":%"])
+    conn.execute("INSERT INTO data_health VALUES (?, NULL, NULL, 'file_refused', ?)",
+                 [named_date, f"{source}: {detail}"])

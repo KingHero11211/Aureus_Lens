@@ -13,11 +13,12 @@ from pathlib import Path
 from typing import List
 
 from config import PROJECT_ROOT
-from src.aureus_lens.ingest.csv_loader import LoadResult, load_csv
+from src.aureus_lens.ingest.csv_loader import LoadResult, filename_date, load_csv
 from src.aureus_lens.reconcile import check_continuity, continuity_events, render_data_notes
 from src.aureus_lens.store.db import (
     DEFAULT_DB_PATH,
     init_db,
+    log_refused_file,
     read_bhav,
     replace_health_events,
     store_load,
@@ -68,6 +69,16 @@ def main(argv: List[str] = None) -> int:
             status = 1
             continue
         print(format_report(result))
+        named = filename_date(path)
+        found = set(result.rows["date"])
+        if named is not None and found and found != {named}:
+            detail = (f"file name says {named}, rows are dated "
+                      f"{', '.join(sorted(d.isoformat() for d in found))}; not stored")
+            print(f"error:   {detail}\n")
+            if conn is not None:
+                log_refused_file(conn, Path(path).name, named, detail)
+            status = 1
+            continue
         if conn is not None:
             print(f"stored:  {store_load(conn, result)} new rows")
         print()
@@ -85,6 +96,7 @@ def main(argv: List[str] = None) -> int:
         conn.execute("SELECT * FROM load_log").df(),
         conn.execute("SELECT * FROM reject_counts").df(),
         cont,
+        conn.execute("SELECT detail FROM data_health WHERE event = 'file_refused' ORDER BY 1").df(),
     )
     Path(args.notes).parent.mkdir(parents=True, exist_ok=True)
     Path(args.notes).write_text(notes, encoding="utf-8", newline="\n")
