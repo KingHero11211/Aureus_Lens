@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Raw exchange and broker files are not redistributed
+data/raw/
+public/assets/aistudio/
+*.csv
+!tests/fixtures/*.csv
+
+# Local store, rebuilt from CSVs
+*.duckdb
+*.duckdb.wal
+
+# Node (baseline frontend)
+node_modules/
+dist/
+
+.env*
+!.env.example
+.DS_Store
+*.log
