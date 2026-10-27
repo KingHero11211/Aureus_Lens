@@ -29,8 +29,8 @@ They must be added before the dates below are fixed.
 
 | Parameter | Value | Source |
 |---|---|---|
-| Lot size (grams) | GOLDM 100, GOLDTEN 10, GOLDGUINEA 8, GOLDPETAL 1 | Verified: reproduces reported value within 0.5% for every active gold future on 9 Oct 2026 (`tests/test_csv_loader.py`) |
-| Quote unit (grams) | GOLDM 10, GOLDTEN 10, GOLDGUINEA 8, GOLDPETAL 1 | Verified, same test |
+| Lot size (grams) | GOLDM 100, GOLDTEN 10, GOLDGUINEA 8, GOLDPETAL 1 | Checked against data: reproduces reported value within 0.5% for every active gold future on 9 Oct 2026 (docs/VERIFICATION.md items 1.8 and 1.9). Not checked against an MCX contract specification |
+| Quote unit (grams) | GOLDM 10, GOLDTEN 10, GOLDGUINEA 8, GOLDPETAL 1 | Checked against data, same test |
 | Purity | GOLDM 995, others 999 | UNVERIFIED; matches the hand-checked normalization only |
 | Tender period (days) | GOLDM 3, GOLDTEN 3, GOLDGUINEA 3, GOLDPETAL 5 | UNVERIFIED. GOLDGUINEA from a secondary summary of MCX/TRD/456/2025; GOLDPETAL 5 is a conservative placeholder |
 | Carry buffer (`STAGGERED_DELIVERY_DAYS`) | 3 calendar days | UNVERIFIED; GOLDM tender window length has no source |

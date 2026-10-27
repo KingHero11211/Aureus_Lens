@@ -1,8 +1,8 @@
 """Contract facts, cost rates and paths for Aureus Lens.
 
-Values are either verified against the bhavcopy files in data/raw/ or listed
-in UNVERIFIED_ITEMS. Anything in UNVERIFIED_ITEMS is a placeholder and must
-not be presented as fact.
+Values are either checked against the bhavcopy files (docs/VERIFICATION.md)
+or listed in UNVERIFIED_ITEMS. Anything in UNVERIFIED_ITEMS is a placeholder
+and must not be presented as fact.
 """
 
 from pathlib import Path
@@ -14,8 +14,9 @@ RAW_DIR: Path = DATA_DIR / "raw"  # manually downloaded CSVs, not committed
 
 TARGET_SYMBOLS: Set[str] = {"GOLDM", "GOLDTEN", "GOLDGUINEA", "GOLDPETAL"}
 
-# Verified: lot_size_grams and quote_grams reproduce Value(Lacs) to within
-# 0.5% for every active gold future on 9 Oct 2026 (tests/test_csv_loader.py).
+# Checked against data, not an MCX specification (docs/VERIFICATION.md 1.8,
+# 1.9): lot_size_grams and quote_grams reproduce Value(Lacs) to within 0.5%
+# for every active gold future on 9 Oct 2026.
 # purity, tick_size and tender_period_days are UNVERIFIED; see below.
 CONTRACT_SPECS: Dict[str, Dict[str, Any]] = {
     "GOLDM": {
