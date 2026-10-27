@@ -18,7 +18,7 @@ from src.aureus_lens.core.costs import pair_cost_bps
 from src.aureus_lens.core.curve import adjust_to_expiry, eligible_goldm
 from src.aureus_lens.core.gate import DEFAULT_COST_MARGIN, executability_gate
 from src.aureus_lens.core.normalize import normalize_ppg999, per_gram
-from src.aureus_lens.core.signals import compute_zscore
+from src.aureus_lens.core.signals import Z_MIN_PERIODS, Z_WINDOW, compute_zscore
 from src.aureus_lens.core.spread import compute_spread_bps
 from src.aureus_lens.core.waterfall import compute_waterfall
 
@@ -71,7 +71,7 @@ def _pair_row(a, b, kind, carry, carry_source, cost, margin):
 
 def build_pairs(bhav: pd.DataFrame, carry: pd.DataFrame,
                 notional: float = 1_000_000.0, margin: float = DEFAULT_COST_MARGIN,
-                window: int = 60, min_periods: int = 10,
+                window: int = Z_WINDOW, min_periods: int = Z_MIN_PERIODS,
                 z_threshold: float = DEFAULT_Z_THRESHOLD) -> pd.DataFrame:
     """Return one row per pair per session. Spreads are in bps of leg_b
     (aligned to leg_a's expiry); a positive spread means leg_a is dearer.

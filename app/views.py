@@ -38,6 +38,7 @@ VERIFICATION_MD = PROJECT_ROOT / "docs" / "VERIFICATION.md"
 
 # Thresholds come from the code, not from this module.
 Z_WINDOW = inspect.signature(build_pairs).parameters["window"].default
+Z_MIN_PERIODS = inspect.signature(build_pairs).parameters["min_periods"].default
 Z_THRESHOLD = inspect.signature(build_pairs).parameters["z_threshold"].default
 
 KIND_LABEL = {
@@ -171,10 +172,22 @@ def normalized_view(store: Store) -> View:
     return v
 
 
-def _z_display(pairs: pd.DataFrame, n_sessions: int) -> pd.Series:
-    if n_sessions < Z_WINDOW:
-        return pd.Series(insufficient(n_sessions, Z_WINDOW), index=pairs.index)
-    return pairs["zscore"].map(lambda z: "NaN" if pd.isna(z) else f"{z:.2f}")
+def baseline_counts(pairs: pd.DataFrame) -> pd.Series:
+    """Return, per row, the number of earlier non-missing spreads in the same
+    pair and expiry series: the history the z-score baseline can use."""
+    keys = ["kind", "leg_a", "leg_b", "expiry_a"]
+    ordered = pairs.sort_values("date")
+    prior = ordered.groupby(keys)["spread_bps"].transform(
+        lambda s: s.notna().cumsum().shift(1, fill_value=0))
+    return prior.reindex(pairs.index).astype(int)
+
+
+def z_display(pairs: pd.DataFrame) -> pd.Series:
+    """Return the z-score as text, or an insufficient-history note while the
+    baseline has fewer than Z_MIN_PERIODS sessions."""
+    return pd.Series([
+        insufficient(int(n), Z_MIN_PERIODS) if n < Z_MIN_PERIODS else ("NaN" if pd.isna(z) else f"{z:.2f}")
+        for n, z in zip(pairs["baseline"], pairs["zscore"])], index=pairs.index)
 
 
 def _carry_label(carry: pd.DataFrame) -> str:
@@ -200,16 +213,16 @@ def scanner_view(store: Store, date=None) -> View:
     carry = carry_series(store.bhav)
     pairs = build_pairs(store.bhav, carry)
     day = date or store.sessions[-1]
+    pairs["baseline"] = baseline_counts(pairs)
     p = pairs[pairs["date"] == day].copy()
-    n = len(store.sessions)
+    short = p["baseline"] < Z_MIN_PERIODS
 
     p["pair"] = p["leg_a"] + " " + p["expiry_a"].astype(str) + " vs " + p["leg_b"] + " " + p["expiry_b"].astype(str)
     p["gate"] = np.where(p["passes"], "pass", "fail")
     p["failing reasons"] = p["reasons"].map(lambda r: "; ".join(r) if r else "")
-    p["zscore"] = _z_display(p, n)
-    if n < Z_WINDOW:
-        # Below the window no row may count as a signal, whatever the code returned.
-        p["signal"] = False
+    p["zscore"] = z_display(p)
+    # Below the required history no row may count as a signal, whatever the code returned.
+    p.loc[short, "signal"] = False
     cd = carry_display(carry).set_index("date")
     carry_ok = bool(cd.loc[day, "shown"])
     if not carry_ok:
@@ -233,15 +246,16 @@ def scanner_view(store: Store, date=None) -> View:
 
     if not p["signal"].any():
         reasons = []
-        if n < Z_WINDOW:
-            reasons.append(f"history below {Z_WINDOW} sessions ({n} of {Z_WINDOW})")
+        if short.any():
+            reasons.append(f"z-score history below {Z_MIN_PERIODS} sessions on {int(short.sum())} pairs "
+                           f"(longest {int(p['baseline'].max())} of {Z_MIN_PERIODS})")
         if not carry_ok:
             reasons.append(f"GOLDM pairs not evaluated: carry {insufficient(int(cd.loc[day, 'valid_sessions']), CARRY_MIN_SESSIONS)}")
         failed = p[~p["passes"] & (p["gate"] == "fail")]
         if not failed.empty:
             kinds = failed["reasons"].explode().dropna().map(_reason_kind).value_counts()
             reasons += [f"{k}: {c} pairs" for k, c in kinds.items()]
-        if n >= Z_WINDOW:
+        if not short.all():
             reasons.append(f"|z-score| below {Z_THRESHOLD:g} on all pairs that pass the gate")
         v.messages.append(f"{NO_SIGNAL}. Reasons: " + "; ".join(reasons))
     return v
@@ -291,8 +305,9 @@ def waterfall_view(store: Store, date, kind, leg_a, expiry_a, leg_b) -> View:
                                             r["tick_floor_bps"], r["cost_bps"]))
     stages["stage"] = stages["stage"].replace({"edge": "executable edge"})
     v.tables[f"{leg_a} {expiry_a} vs {leg_b} {r['expiry_b']}"] = stages.round(4)
+    base = int(baseline_counts(pairs).loc[hit.index[0]])
     v.messages.append("Tick sizes and cost rates are UNVERIFIED. The edge is not a finding: "
-                      f"{insufficient(len(store.sessions), Z_WINDOW)} for a z-score.")
+                      f"{insufficient(base, Z_MIN_PERIODS)} for a z-score.")
     return v
 
 

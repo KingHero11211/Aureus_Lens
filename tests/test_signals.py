@@ -60,3 +60,13 @@ def test_resets_on_expiry_change():
     exp = pd.Series(["a"] * 6 + ["b"])
     z = compute_zscore(s, window=5, min_periods=5, expiry=exp)
     assert not pd.isna(z.iloc[5]) and pd.isna(z.iloc[6])
+
+
+def test_default_first_value_on_session_61():
+    # Plain number series. Window and min_periods are both 60, and the
+    # baseline is lagged, so index 60 (the 61st session) is the first value.
+    from src.aureus_lens.core.signals import Z_MIN_PERIODS, Z_WINDOW
+    assert Z_WINDOW == Z_MIN_PERIODS == 60
+    z = compute_zscore(pd.Series([float(i % 7) for i in range(70)]))
+    assert z.iloc[:60].isna().all()
+    assert z.iloc[60:].notna().all()

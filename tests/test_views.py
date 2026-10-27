@@ -60,8 +60,28 @@ def numbers_in(frame: pd.DataFrame, col: str) -> bool:
 
 
 def test_thresholds_read_from_code():
-    assert views.Z_WINDOW == 60
+    from src.aureus_lens.core import signals
+    assert views.Z_WINDOW == signals.Z_WINDOW == 60
+    assert views.Z_MIN_PERIODS == signals.Z_MIN_PERIODS == 60
     assert views.Z_THRESHOLD == 2.0
+
+
+def test_dashboard_and_code_agree_on_first_zscore():
+    # Plain number series (not prices): 62 sessions of one pair.
+    from src.aureus_lens.core.signals import compute_zscore
+    spread = pd.Series([float(i % 7) for i in range(62)])
+    pairs = pd.DataFrame({
+        "date": pd.date_range("2026-01-01", periods=62).date, "kind": "small_small",
+        "leg_a": "GOLDPETAL", "leg_b": "GOLDTEN", "expiry_a": date(2027, 1, 29),
+        "spread_bps": spread, "zscore": compute_zscore(spread)})
+    pairs["baseline"] = views.baseline_counts(pairs)
+    shown = views.z_display(pairs)
+    assert pairs["baseline"].iloc[59] == 59 and pairs["baseline"].iloc[60] == 60
+    assert shown.iloc[59] == "insufficient history (59 of 60 sessions)"
+    assert pd.isna(pairs["zscore"].iloc[59])
+    assert shown.iloc[60] == f"{pairs['zscore'].iloc[60]:.2f}" and pd.notna(pairs["zscore"].iloc[60])
+    # Wherever the code has a value the dashboard shows it, and only there.
+    assert (pairs["zscore"].notna() == ~shown.str.startswith("insufficient")).all()
 
 
 # Labels
@@ -101,8 +121,11 @@ def test_empty_store_shows_empty_state_on_every_page(empty_store):
 
 def test_zscore_column_shows_insufficient_history_not_numbers(oct_store):
     v = views.scanner_view(oct_store)
+    small = v.tables["same expiry, small vs small"]
+    # 9 Oct: each series has three earlier sessions (5, 6, 7 Oct).
+    assert (small["zscore"] == "insufficient history (3 of 60 sessions)").all()
     for table in pair_tables(v):
-        assert (table["zscore"] == "insufficient history (4 of 60 sessions)").all()
+        assert table["zscore"].str.startswith("insufficient history (").all()
         assert not numbers_in(table, "zscore")
 
 
@@ -127,7 +150,7 @@ def test_one_session_normalized_view_says_insufficient():
 def test_no_actionable_signal_with_reasons(oct_store):
     msg = views.scanner_view(oct_store).messages[0]
     assert msg.startswith("No actionable signal. Reasons: ")
-    assert "history below 60 sessions (4 of 60)" in msg
+    assert "z-score history below 60 sessions on 36 pairs (longest 3 of 60)" in msg
     assert "below 2x cost" in msg
 
 
