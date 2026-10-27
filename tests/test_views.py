@@ -48,6 +48,13 @@ def all_views(store):
             views.coverage_view(store), views.backtest_view(store)]
 
 
+PAIR_TABLES = ["same expiry, small vs small", "small vs GOLDM (depends on purity assumption)"]
+
+
+def pair_tables(view):
+    return [view.tables[name] for name in PAIR_TABLES]
+
+
 def numbers_in(frame: pd.DataFrame, col: str) -> bool:
     return frame[col].map(lambda v: bool(re.fullmatch(r"-?\d+(\.\d+)?", str(v)))).any()
 
@@ -94,7 +101,7 @@ def test_empty_store_shows_empty_state_on_every_page(empty_store):
 
 def test_zscore_column_shows_insufficient_history_not_numbers(oct_store):
     v = views.scanner_view(oct_store)
-    for table in v.tables.values():
+    for table in pair_tables(v):
         assert (table["zscore"] == "insufficient history (4 of 60 sessions)").all()
         assert not numbers_in(table, "zscore")
 
@@ -105,7 +112,7 @@ def test_no_signal_below_window_even_if_code_would_signal(oct_store, monkeypatch
     monkeypatch.setattr(views, "build_pairs",
                         lambda *a, **k: real(*a, **k).assign(signal=True, zscore=5.0))
     v = views.scanner_view(oct_store)
-    for table in v.tables.values():
+    for table in pair_tables(v):
         assert not table["signal"].any()
         assert not numbers_in(table, "zscore")
 
@@ -126,7 +133,7 @@ def test_no_actionable_signal_with_reasons(oct_store):
 
 def test_small_small_first_and_goldm_labelled(oct_store):
     names = list(views.scanner_view(oct_store).tables)
-    assert names == ["same expiry, small vs small", "small vs GOLDM (depends on purity assumption)"]
+    assert names[:2] == PAIR_TABLES
 
 
 def test_all_failing_reasons_listed(oct_store):
@@ -190,3 +197,47 @@ def test_smoke_real_store():
     for v in all_views(store):
         assert v.labels()
     assert STORE_PATH.stat().st_mtime == before
+
+
+# Carry minimum sessions (CARRY_MIN_SESSIONS = 5)
+
+SAMPLE_B = Path(__file__).parent / "fixtures" / "format_b_20260121_sample.csv"
+
+
+def test_carry_min_sessions_in_config():
+    from config import CARRY_MIN_SESSIONS
+    assert CARRY_MIN_SESSIONS == 5
+
+
+def test_single_session_carry_not_shown():
+    v = views.scanner_view(make_store([ONE_DAY]))
+    carry = v.tables["Carry from GOLDM curve (per year, continuous)"]
+    assert carry["carry per year"].tolist() == ["insufficient history (1 of 5 sessions)"]
+    goldm = v.tables["small vs GOLDM (depends on purity assumption)"]
+    assert (goldm["spread_bps"] == "carry insufficient history (1 of 5 sessions)").all()
+    assert (goldm["gate"] == "not evaluated").all()
+
+
+def test_four_october_sessions_carry_not_shown(oct_store):
+    carry = views.scanner_view(oct_store).tables["Carry from GOLDM curve (per year, continuous)"]
+    assert carry["carry per year"].iloc[-1] == "insufficient history (4 of 5 sessions)"
+    assert not carry["carry per year"].str.match(r"^-?\d").any()
+
+
+def test_five_sessions_with_valid_carry_are_shown():
+    # 21 Jan 2026 (format B sample: GOLDM Feb and Mar active) plus 5, 6, 7, 9 Oct.
+    store = make_store([SAMPLE_B] + sorted(OCT_DIR.glob("*.csv")))
+    v = views.scanner_view(store)
+    carry = v.tables["Carry from GOLDM curve (per year, continuous)"].set_index("date")
+    assert list(carry["carry_source"]) == ["empirical"] * 5
+    assert carry.loc[date(2026, 10, 9), "carry per year"] == "0.111010"
+    assert carry.loc[date(2026, 10, 7), "carry per year"].startswith("insufficient history (4 of 5")
+    goldm = v.tables["small vs GOLDM (depends on purity assumption)"]
+    assert goldm["spread_bps"].map(lambda x: isinstance(x, float)).all()
+
+
+def test_waterfall_goldm_pair_hidden_below_carry_minimum(oct_store):
+    v = views.waterfall_view(oct_store, date(2026, 10, 9), "small_goldm",
+                             "GOLDTEN", date(2026, 10, 30), "GOLDM")
+    assert not v.tables
+    assert v.messages == ["Carry step not shown: carry insufficient history (4 of 5 sessions)"]

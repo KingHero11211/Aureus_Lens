@@ -55,6 +55,11 @@ CONTRACT_SPECS: Dict[str, Dict[str, Any]] = {
 # Expiries this many calendar days away or closer are excluded from carry.
 STAGGERED_DELIVERY_DAYS: int = 3
 
+# Carry is shown, and used to align GOLDM pairs on the dashboard, only once
+# this many sessions up to the date have an empirical carry value.
+# Chosen by the team, not derived.
+CARRY_MIN_SESSIONS: int = 5
+
 # Cost rates. All UNVERIFIED until confirmed from MCX circulars. They are
 # set so that Rs 1,000,000 turnover costs 69.56 (buy) and 149.56 (sell).
 BROKERAGE_RATE_PCT: float = 0.0003

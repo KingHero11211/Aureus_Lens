@@ -17,6 +17,7 @@ import pandas as pd
 from config import (
     BROKERAGE_MAX_PER_ORDER,
     BROKERAGE_RATE_PCT,
+    CARRY_MIN_SESSIONS,
     CTT_SELL_PCT,
     EXCHANGE_TRANSACTION_CHARGE_PCT,
     GST_PCT,
@@ -180,6 +181,19 @@ def _carry_label(carry: pd.DataFrame) -> str:
     return ", ".join(f"{s} {n}" for s, n in carry["carry_source"].value_counts().sort_index().items())
 
 
+def carry_display(carry: pd.DataFrame) -> pd.DataFrame:
+    """Return carry per session, with the value replaced by an insufficient-history
+    note until CARRY_MIN_SESSIONS sessions have an empirical value."""
+    c = carry.sort_values("date").copy()
+    c["valid_sessions"] = (c["carry_source"] == "empirical").cumsum()
+    c["shown"] = c["valid_sessions"] >= CARRY_MIN_SESSIONS
+    c["carry per year"] = [
+        f"{v:.6f}" if ok and pd.notna(v) else
+        ("none" if ok else insufficient(int(n), CARRY_MIN_SESSIONS))
+        for v, ok, n in zip(c["carry"], c["shown"], c["valid_sessions"])]
+    return c[["date", "carry per year", "carry_source", "near_expiry", "far_expiry", "valid_sessions", "shown"]]
+
+
 def scanner_view(store: Store, date=None) -> View:
     if store.bhav.empty:
         return _empty("Spread Scanner", "bps")
@@ -196,18 +210,34 @@ def scanner_view(store: Store, date=None) -> View:
     if n < Z_WINDOW:
         # Below the window no row may count as a signal, whatever the code returned.
         p["signal"] = False
+    cd = carry_display(carry).set_index("date")
+    carry_ok = bool(cd.loc[day, "shown"])
+    if not carry_ok:
+        note = "carry " + insufficient(int(cd.loc[day, "valid_sessions"]), CARRY_MIN_SESSIONS)
+        goldm = p["kind"] == "small_goldm"
+        p["spread_bps"] = p["spread_bps"].astype(object)
+        p.loc[goldm, "spread_bps"] = note
+        p.loc[goldm, "gate"] = "not evaluated"
+        p.loc[goldm, "failing reasons"] = note
+        p.loc[goldm, "signal"] = False
     cols = ["pair", "spread_bps", "cost_bps", "carry_source", "gate", "failing reasons", "zscore", "signal"]
 
     v = View("Spread Scanner", _source(store.bhav[store.bhav["date"] == day]), f"{day} (history: {_dates(store.sessions)})",
              "bps of leg b; cost is pair round trip", carry_source=_carry_label(carry[carry["date"] == day]))
     for kind in ["small_small", "small_goldm"]:
-        v.tables[KIND_LABEL[kind]] = p[p["kind"] == kind][cols].round({"spread_bps": 2, "cost_bps": 2}).reset_index(drop=True)
+        t = p[p["kind"] == kind][cols].copy()
+        t["spread_bps"] = t["spread_bps"].map(lambda x: round(x, 2) if isinstance(x, float) else x)
+        v.tables[KIND_LABEL[kind]] = t.round({"cost_bps": 2}).reset_index(drop=True)
+    v.tables["Carry from GOLDM curve (per year, continuous)"] = (
+        cd.reset_index()[lambda c: c["date"] <= day].drop(columns=["shown"]))
 
     if not p["signal"].any():
         reasons = []
         if n < Z_WINDOW:
             reasons.append(f"history below {Z_WINDOW} sessions ({n} of {Z_WINDOW})")
-        failed = p[~p["passes"]]
+        if not carry_ok:
+            reasons.append(f"GOLDM pairs not evaluated: carry {insufficient(int(cd.loc[day, 'valid_sessions']), CARRY_MIN_SESSIONS)}")
+        failed = p[~p["passes"] & (p["gate"] == "fail")]
         if not failed.empty:
             kinds = failed["reasons"].explode().dropna().map(_reason_kind).value_counts()
             reasons += [f"{k}: {c} pairs" for k, c in kinds.items()]
@@ -245,6 +275,13 @@ def waterfall_view(store: Store, date, kind, leg_a, expiry_a, leg_b) -> View:
     if hit.empty:
         return View("Waterfall", "DuckDB store", str(date), "bps", messages=["No such pair on this session."])
     r = hit.iloc[0]
+    if kind == "small_goldm":
+        cd = carry_display(carry).set_index("date")
+        if not cd.loc[date, "shown"]:
+            return View("Waterfall", _source(store.bhav[store.bhav["date"] == date]), str(date), "bps of leg b",
+                        carry_source=r["carry_source"],
+                        messages=["Carry step not shown: carry " + insufficient(
+                            int(cd.loc[date, "valid_sessions"]), CARRY_MIN_SESSIONS)])
     v = View("Waterfall", _source(store.bhav[store.bhav["date"] == date]), str(date), "bps of leg b",
              carry_source=r["carry_source"])
     if pd.isna(r["spread_bps"]):
