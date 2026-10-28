@@ -41,42 +41,38 @@ a network call. The shared `.streamlit/config.toml` leaves the address unset
 because Streamlit Community Cloud serves the app itself; usage stats are off
 in both cases.
 
-The app reads `data/aureus.duckdb` if it exists and otherwise the committed
-snapshot in `data/snapshot/`, so a fresh clone shows the October 2026 data.
+The application runs entirely in memory without reading or requiring disk-backed
+database stores or committed snapshots.
 
-Deploy: NOT RUN (Snapshot redistribution not confirmed; data/snapshot/ excluded from repo).
+## Obtaining Bhavcopy Data
 
-## Data
+The repository holds zero market data. The project contains no scrapers and
+never makes network calls to MCX, Samco or third-party servers.
 
-The project never downloads data. Bhavcopy files are downloaded by hand and
-placed in `data/raw/`, which is not committed. Two layouts are read:
+Users upload MCX Bhavcopy CSV files through the **Upload** page of the web
+application. Two formats are accepted:
 
-- Format A, from the MCX Bhavcopy page (`BhavCopyDateWise_DDMMYYYY.csv`).
-- Format B, from Samco's Bhav Copy download (`YYYYMMDD_MCX.csv`).
+- Format A: MCX official Bhavcopy (`BhavCopyDateWise_DDMMYYYY.csv`), available
+  manually from the MCX India portal under Market Data > Historical Data > Bhavcopy.
+- Format B: Historical archive format (`YYYYMMDD_MCX.csv`), available from
+  Samco's MCX Bhav Copy archive.
 
-To add data:
+Do not rename the downloaded files. The loader checks that the date in the file
+name matches the internal record dates and refuses mismatched or duplicate files.
+Uploaded data is processed strictly in session memory and is never written to disk.
 
-1. Download the day's Bhavcopy CSV by hand and save it in `data/raw/`
-   without renaming it. The loader checks that the date in the file name
-   matches the rows and refuses files where it does not.
-2. `python -m scripts.load_csv data/raw/*.csv` loads them into the store,
-   runs the continuity check and rewrites `docs/data_notes.md`.
-3. `python scripts/build_snapshot.py` rebuilds `data/snapshot/` from the
-   store for the public app. Commit the snapshot, never the CSVs.
-
-See [docs/DATA_TERMS.md](docs/DATA_TERMS.md) for where the data comes from
-and how it may be used.
+See [docs/DATA_TERMS.md](docs/DATA_TERMS.md) for data terms and ownership.
 
 ## Layout
 
 ```
-app/              dashboard.py (Streamlit) and views.py (page data, testable)
-src/aureus_lens/  ingest (CSV loader), store (DuckDB), core (analytics),
-                  reconcile (checks, data notes), snapshot
-scripts/          load_csv.py, build_snapshot.py
-tests/            pytest suite; fixtures are rows copied from real files
-docs/             VERIFICATION.md, data_notes.md (generated), DATA_TERMS.md
-data/snapshot/    derived tables used by the public app
+app/              dashboard.py (Streamlit UI) and views.py (view models, testable)
+src/aureus_lens/  ingest (bhav loader, uploader), store (DuckDB in-memory),
+                  core (normalisation, curves, pairs, signals, waterfall),
+                  reconcile (checks, continuity), snapshot
+scripts/          load_bhav.py, build_snapshot.py
+tests/            pytest suite (fixtures embedded in test harness, zero CSV files)
+docs/             VERIFICATION.md, DATA_TERMS.md
 ```
 
 ## Checks

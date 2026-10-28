@@ -1,40 +1,37 @@
 # Data terms
 
-## Source
+## Source and Ownership
 
-The data are MCX Bhavcopy files: the exchange's end-of-day report of every
-contract traded on a session. Two copies of the same reports are used:
+The data are Multi Commodity Exchange of India (MCX) Bhavcopy reports: the
+exchange's end-of-day record of contracts traded on each session. MCX owns
+the Bhavcopy data.
 
-- Files from the MCX Bhavcopy page (format A, `BhavCopyDateWise_DDMMYYYY.csv`).
-- Files from Samco's Bhav Copy download page, which serves the MCX
-  Bhavcopy (format B, `YYYYMMDD_MCX.csv`).
+The application and repository distribute zero market data. No CSV files, no
+snapshot files, no database store files, and no derived price tables are held
+or tracked in the repository.
 
-For 21 January 2026 both copies were loaded and give identical rows for the
-four gold futures (docs/VERIFICATION.md item 1.11).
+Two Bhavcopy layouts are supported by the in-memory loader:
 
-## How the files were obtained
+- Format A, from the official MCX Bhavcopy portal (`BhavCopyDateWise_DDMMYYYY.csv`).
+- Format B, from Samco's Bhav Copy download archive (`YYYYMMDD_MCX.csv`).
 
-Every file was downloaded by hand from those pages and saved in
-`data/raw/`. The project contains no code that downloads from MCX, Samco or
-any other site, and no code that works around access controls.
+## In-Session Processing
 
-## What is redistributed
+Users upload their own Bhavcopy files directly into the web application. All
+processing is conducted entirely in memory (in-session DuckDB). Uploaded files
+are never written to disk on the host, are never logged beyond session-level
+file names and counts, and are cleared when the session terminates. Each user
+session is isolated and independent.
 
-Raw Bhavcopy files are not redistributed. `data/raw/` is excluded from the
-repository by `.gitignore`.
-
-The repository contains:
-
-- `tests/fixtures/`: a small number of rows copied unchanged from the files,
-  used as test inputs.
-- `data/snapshot/`: tables derived from the files (prices per gram of 999
-  gold, pair spreads, carry, check results). `data/snapshot/manifest.json`
-  lists the source files and their SHA-256 checksums. Close can be recovered
-  from the per-gram price in the snapshot by reversing the normalisation in
-  config.
+The repository contains no automated scrapers, no code that downloads from
+MCX, Samco or any third-party website, and no network calls to external market
+data endpoints.
 
 ## Use
 
-This project is for analysis only. It is not trading advice, and nothing in
-it is a recommendation to buy or sell any contract. Several inputs, including
-all cost rates, are unverified placeholders (see README.md).
+This project is for relative-value research and analysis only. It is not
+financial or trading advice, and nothing in this repository or application
+constitutes an offer or recommendation to buy or sell any commodity, contract
+or derivative. Several inputs, including transaction cost rates, contract tender
+periods and tick sizes, remain unverified placeholders (see README.md and
+docs/VERIFICATION.md).
