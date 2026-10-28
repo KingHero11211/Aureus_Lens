@@ -16,11 +16,16 @@ DATE_COLUMNS = {
     "normalized": ["date", "expiry_date"],
     "pairs": ["date", "expiry_a", "expiry_b"],
     "carry": ["date", "carry_date", "near_expiry", "far_expiry"],
-    "continuity": ["date", "expiry_date"],
+    "continuity": ["date", "expiry_date", "prior_date"],
     "load_log": ["first_date", "last_date"],
     "refused": ["date"],
     "value_summary": ["date"],
 }
+
+# Columns in continuity that clash with raw bhavcopy field names are renamed
+# in the snapshot so the snapshot never contains raw field names.
+_CONT_RENAME = {"previous_close": "stored_prev_close"}
+_CONT_RENAME_BACK = {v: k for k, v in _CONT_RENAME.items()}
 
 
 def write_snapshot(derived, out_dir: Path, manifest: Dict[str, Any]) -> Dict[str, int]:
@@ -32,6 +37,8 @@ def write_snapshot(derived, out_dir: Path, manifest: Dict[str, Any]) -> Dict[str
         df = getattr(derived, name).copy()
         if name == "pairs":
             df["reasons"] = df["reasons"].map(list)
+        if name == "continuity":
+            df = df.rename(columns=_CONT_RENAME)
         df.to_parquet(out_dir / f"{name}.parquet", index=False)
         rows[name] = len(df)
     manifest = dict(manifest, tables=rows)
@@ -62,6 +69,8 @@ def read_snapshot(snapshot_dir: Path):
                 df[col] = _dates(df[col])
         if name == "pairs" and not df.empty:
             df["reasons"] = df["reasons"].map(list)
+        if name == "continuity":
+            df = df.rename(columns=_CONT_RENAME_BACK)
         tables[name] = df
     origin = f"snapshot built {manifest['built_at']} from commit {manifest['code_commit'][:10]}"
     return Derived(origin=origin, **tables)

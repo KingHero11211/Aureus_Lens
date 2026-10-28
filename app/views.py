@@ -47,6 +47,7 @@ KIND_LABEL = {
     "small_small": "same expiry, small vs small",
     "small_goldm": "small vs GOLDM (depends on purity assumption)",
 }
+PAIR_TABLES = list(KIND_LABEL.values())
 PAIR_KEYS = ["kind", "leg_a", "leg_b", "expiry_a"]
 
 
@@ -142,7 +143,7 @@ def derive(store: Store, origin: str = "DuckDB store") -> Derived:
     carry = carry_series(b)
     pairs = build_pairs(b, carry)
     pairs["baseline"] = baseline_counts(pairs)
-    cont = check_continuity(b)[["date", "symbol", "expiry_date", "status"]]
+    cont = check_continuity(b)
     vc = value_check(b).groupby("date")["in_range"].agg(in_range="sum", active="size").reset_index()
     load_log = store.load_log.copy()
     for col in ["first_date", "last_date"]:
@@ -167,6 +168,13 @@ def load_data(store_path: Optional[Path] = None, snapshot_dir: Optional[Path] = 
 
 def insufficient(have: int, need: int) -> str:
     return f"insufficient history ({have} of {need} sessions)"
+
+
+def history_status(have: int, need: int) -> str:
+    """Return a human-readable history status string."""
+    if have >= need:
+        return f"z-score available ({have} sessions)"
+    return f"insufficient history ({have} of {need})"
 
 
 def _source(normalized: pd.DataFrame) -> str:
@@ -194,6 +202,22 @@ def not_run_items(path: Path = VERIFICATION_MD) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["item", "check", "result"])
 
 
+def _value_check_label(day, vs, normalized):
+    """Return value-check label for a session day."""
+    if day not in vs.index:
+        return "no active rows"
+    in_range = int(vs.loc[day, "in_range"])
+    active = int(vs.loc[day, "active"])
+    day_rows = normalized[normalized["date"] == day]
+    total = len(day_rows)
+    zero_vol = int(day_rows["zero_volume"].sum())
+    if zero_vol > 0 and active < total:
+        excluded = f"; {zero_vol} excluded (zero volume)"
+    else:
+        excluded = ""
+    return f"{in_range} of {active} active rows within low-high range{excluded}"
+
+
 def data_health_view(d: Derived) -> View:
     if d.empty:
         v = _empty("Data Health", "rows")
@@ -202,19 +226,28 @@ def data_health_view(d: Derived) -> View:
     vs = d.value_summary.set_index("date")
     files = d.load_log.copy()
     files["value check"] = files["first_date"].map(
-        lambda day: f"{vs.loc[day, 'in_range']} of {vs.loc[day, 'active']} active rows within low-high range"
-        if day in vs.index else "no active rows")
+        lambda day: _value_check_label(day, vs, d.normalized))
     files = files.rename(columns={"source_file": "file", "first_date": "date", "rows_kept": "rows kept",
                                   "rows_rejected": "rows rejected"})
     cont = d.continuity["status"].value_counts()
     counts = pd.DataFrame({"status": ["ok", "gap", "unchecked", "new", "first"]})
     counts["rows"] = counts["status"].map(lambda s: int(cont.get(s, 0)))
+    gap_rows = d.continuity[d.continuity["status"] == "gap"][[
+        "date", "symbol", "expiry_date", "previous_close", "prior_date", "prior_close", "detail"
+    ]].copy()
+    gap_rows["status"] = "unexplained"
+    zero_vol_rows = d.normalized[
+        d.normalized["zero_volume"] & d.normalized["date"].isin(d.sessions)
+    ][["date", "symbol", "expiry_date", "lots_traded"]].copy()
+    zero_vol_rows["reason"] = "zero volume"
     return View(
         "Data Health", "load_log, data_health and bhav tables", _dates(d.sessions), "rows", origin=d.origin,
         tables={
             "Files loaded": files[["file", "date", "format", "rows kept", "rows rejected", "value check"]],
             "Files not stored": d.refused,
             "Continuity (previous close vs prior stored close)": counts,
+            "Continuity gaps (unexplained)": gap_rows,
+            "Value check exclusions (zero volume)": zero_vol_rows,
             "NOT RUN checks (docs/VERIFICATION.md)": not_run_items(),
         },
     )
@@ -274,6 +307,14 @@ def scanner_view(d: Derived, date=None) -> View:
     p["pair"] = p["leg_a"] + " " + p["expiry_a"].astype(str) + " vs " + p["leg_b"] + " " + p["expiry_b"].astype(str)
     p["gate"] = np.where(p["passes"], "pass", "fail")
     p["failing reasons"] = p["reasons"].map(lambda r: "; ".join(r) if len(r) else "")
+    # Compute status using original numeric zscore BEFORE z_display overwrites it.
+    z_num = p["zscore"].fillna(0.0)
+    cand_mask = (
+        p["passes"] &
+        (p["baseline"] >= Z_MIN_PERIODS) &
+        (z_num.abs() >= Z_THRESHOLD)
+    )
+    p["status"] = np.where(cand_mask, "candidate, not backtested", "")
     p["zscore"] = z_display(p)
     # Below the required history no row may count as a signal, whatever the code returned.
     p.loc[short, "signal"] = False
@@ -287,7 +328,8 @@ def scanner_view(d: Derived, date=None) -> View:
         p.loc[goldm, "gate"] = "not evaluated"
         p.loc[goldm, "failing reasons"] = note
         p.loc[goldm, "signal"] = False
-    cols = ["pair", "spread_bps", "cost_bps", "carry_source", "gate", "failing reasons", "zscore", "signal"]
+        p.loc[goldm, "status"] = ""
+    cols = ["pair", "spread_bps", "cost_bps", "carry_source", "gate", "failing reasons", "zscore", "status"]
 
     v = View("Spread Scanner", _day_source(d, day), f"{day} (history: {_dates(d.sessions)})",
              "bps of leg b; cost is pair round trip; carry per year, continuous",
@@ -361,7 +403,7 @@ def waterfall_view(d: Derived, date, kind, leg_a, expiry_a, leg_b) -> View:
     stages["stage"] = stages["stage"].replace({"edge": "executable edge"})
     v.tables[f"{leg_a} {expiry_a} vs {leg_b} {r['expiry_b']}"] = stages.round(4)
     v.messages.append("Tick sizes and cost rates are UNVERIFIED. The edge is not a finding: "
-                      f"{insufficient(int(r['baseline']), Z_MIN_PERIODS)} for a z-score.")
+                      f"{history_status(int(r['baseline']), Z_MIN_PERIODS)} for a z-score.")
     return v
 
 
