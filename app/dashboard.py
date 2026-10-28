@@ -1,7 +1,8 @@
-"""Streamlit dashboard. Reads the local DuckDB store if present, otherwise the
-committed snapshot in data/snapshot/, and files in docs/. No network calls.
+"""Streamlit dashboard. Computes everything in-session from user-uploaded
+MCX Bhavcopy CSV files. No market data in the repository, no network calls,
+and nothing written to disk.
 
-Run: streamlit run app/dashboard.py
+Run: streamlit run app/dashboard.py --server.address localhost
 """
 
 import sys
@@ -11,24 +12,29 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import pandas as pd  # noqa: E402
 import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from app import views  # noqa: E402
-from src.aureus_lens.store.db import DEFAULT_DB_PATH  # noqa: E402
+from src.aureus_lens.ingest.uploader import FileUploadReport, process_uploaded_files  # noqa: E402
 
-# Categorical slots, validated for four series on a light surface. Contrast
-# is below 3:1 for two of them, so every chart has a table and marker shapes.
+# Categorical slots, validated for four series on a light surface.
 SERIES = {"GOLDM": "#2a78d6", "GOLDTEN": "#eb6834", "GOLDGUINEA": "#1baf7a", "GOLDPETAL": "#eda100"}
 MARKERS = {"GOLDM": "circle", "GOLDTEN": "square", "GOLDGUINEA": "diamond", "GOLDPETAL": "triangle-up"}
 UP, DOWN, TOTAL = "#2a78d6", "#eb6834", "#898781"
 
 st.set_page_config(page_title="Aureus Lens", layout="wide")
 
+# In-session state initialization
+if "store" not in st.session_state:
+    st.session_state.store = views.load_data()
+if "upload_reports" not in st.session_state:
+    st.session_state.upload_reports = []
+if "uploaded_hashes" not in st.session_state:
+    st.session_state.uploaded_hashes = None
 
-@st.cache_data(ttl=60)
-def load():
-    return views.load_data(ROOT / DEFAULT_DB_PATH, ROOT / "data" / "snapshot")
+store = st.session_state.store
 
 
 def show(view: views.View) -> None:
@@ -52,13 +58,73 @@ def chart_layout(fig, title, yaxis):
                       margin=dict(l=40, r=20, t=60, b=40), hovermode="closest")
 
 
-store = load()
-pages = ["Data Health", "Normalized View", "Spread Scanner", "Waterfall", "Coverage", "Backtest"]
+pages = ["Upload", "Data Health", "Normalized View", "Spread Scanner", "Waterfall", "Coverage", "Backtest"]
 page = st.sidebar.radio("Page", pages)
-st.sidebar.caption(f"Read from: {store.origin or 'nothing (no store or snapshot)'}")
+st.sidebar.caption(f"Read from: {store.origin or 'in-session uploads (none uploaded yet)'}")
 st.sidebar.caption(f"Sessions stored: {len(store.sessions)}")
 
-if page == "Data Health":
+if page == "Upload":
+    st.header("Upload Bhavcopy CSV Files")
+    st.caption("Upload one or more MCX Bhavcopy CSV files (Format A or Format B). Files are processed strictly in memory.")
+
+    uploaded = st.file_uploader(
+        "Upload Bhavcopy CSV files",
+        type=["csv"],
+        accept_multiple_files=True,
+        key="bhav_uploader",
+    )
+
+    if uploaded:
+        # Check if upload set changed
+        file_hashes = tuple((f.name, getattr(f, "size", 0)) for f in uploaded)
+        if file_hashes != st.session_state.uploaded_hashes:
+            derived, reports = process_uploaded_files(uploaded)
+            st.session_state.store = derived
+            st.session_state.upload_reports = reports
+            st.session_state.uploaded_hashes = file_hashes
+            store = derived
+
+    if st.session_state.upload_reports:
+        st.subheader("Upload Summary")
+        summary_rows = []
+        for r in st.session_state.upload_reports:
+            summary_rows.append({
+                "File Name": r.name,
+                "Format": r.format,
+                "Internal Date": r.internal_date,
+                "Rows Kept": r.rows_kept,
+                "Rejects": r.rejects,
+                "Date Match": r.date_match,
+                "Status": r.status,
+                "Detail": r.detail,
+            })
+        st.dataframe(pd.DataFrame(summary_rows), width="stretch", hide_index=True)
+
+        loaded_files = [r for r in st.session_state.upload_reports if r.status == "Loaded"]
+        refused_files = [r for r in st.session_state.upload_reports if r.status != "Loaded"]
+        total_kept = sum(r.rows_kept for r in loaded_files)
+
+        cols = st.columns(3)
+        cols[0].metric("Files Loaded", len(loaded_files))
+        cols[1].metric("Files Refused", len(refused_files))
+        cols[2].metric("Total Rows Stored", total_kept)
+
+        # Reject breakdowns
+        reject_breakdowns = []
+        for r in st.session_state.upload_reports:
+            for reason, count in r.reject_reasons.items():
+                reject_breakdowns.append({
+                    "File Name": r.name,
+                    "Rejection Reason": reason,
+                    "Count": count,
+                })
+        if reject_breakdowns:
+            st.subheader("Rejected Row Details")
+            st.dataframe(pd.DataFrame(reject_breakdowns), width="stretch", hide_index=True)
+    else:
+        st.info("Upload Bhavcopy CSV files to begin")
+
+elif page == "Data Health":
     show(views.data_health_view(store))
 
 elif page == "Normalized View":

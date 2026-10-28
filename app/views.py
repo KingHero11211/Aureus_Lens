@@ -34,8 +34,7 @@ from src.aureus_lens.core.waterfall import compute_waterfall
 from src.aureus_lens.reconcile import _weekdays_between, check_continuity, value_check
 from src.aureus_lens.store.db import read_bhav
 
-EMPTY = ("No data: neither the store nor the snapshot is present. Load CSV files with: "
-         "python -m scripts.load_csv data/raw/*.csv")
+EMPTY = "Upload Bhavcopy CSV files to begin"
 NO_SIGNAL = "No actionable signal"
 VERIFICATION_MD = PROJECT_ROOT / "docs" / "VERIFICATION.md"
 
@@ -155,14 +154,15 @@ def derive(store: Store, origin: str = "DuckDB store") -> Derived:
                    load_log, refused, vc)
 
 
-def load_data(store_path: Path, snapshot_dir: Path) -> Derived:
+def load_data(store_path: Optional[Path] = None, snapshot_dir: Optional[Path] = None) -> Derived:
     """Return derived tables from the store if present, else the snapshot, else empty."""
-    if Path(store_path).exists():
+    if store_path is not None and Path(store_path).exists():
         return derive(open_store(store_path))
-    from src.aureus_lens.snapshot import read_snapshot
-    if (Path(snapshot_dir) / "manifest.json").exists():
-        return read_snapshot(snapshot_dir)
-    return derive(open_store(store_path), origin="")
+    if snapshot_dir is not None:
+        from src.aureus_lens.snapshot import read_snapshot
+        if (Path(snapshot_dir) / "manifest.json").exists():
+            return read_snapshot(snapshot_dir)
+    return derive(Store(pd.DataFrame(), pd.DataFrame(), pd.DataFrame()), origin="")
 
 
 def insufficient(have: int, need: int) -> str:
