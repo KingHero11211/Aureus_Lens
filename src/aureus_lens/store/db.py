@@ -1,5 +1,6 @@
 """DuckDB store for bhavcopy rows, load records and data health events."""
 
+from datetime import date
 from pathlib import Path
 from typing import Union
 
@@ -124,5 +125,7 @@ def log_refused_file(conn: duckdb.DuckDBPyConnection, source: str,
     """Record a file that was parsed but not stored, replacing any earlier record."""
     conn.execute("DELETE FROM data_health WHERE event = 'file_refused' AND detail LIKE ?",
                  [source + ":%"])
+    if named_date is None:
+        named_date = date(1970, 1, 1)
     conn.execute("INSERT INTO data_health VALUES (?, NULL, NULL, 'file_refused', ?)",
                  [named_date, f"{source}: {detail}"])
