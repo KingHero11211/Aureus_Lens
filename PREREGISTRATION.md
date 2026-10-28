@@ -40,7 +40,7 @@ They must be added before the dates below are fixed.
 | Cost multiple (`DEFAULT_COST_MARGIN`) | 2 | Chosen by the team, not derived |
 | Z-score threshold (`DEFAULT_Z_THRESHOLD`) | 2.0 | Chosen by the team, not derived |
 | Z-score window | 60 sessions | Chosen by the team, not derived (from the baseline code) |
-| Z-score `min_periods` | 60 sessions | Chosen by the team, not derived. Equal to the window, so the first z-score needs 60 earlier sessions and appears on session 61 of a series. The dashboard applies the same rule |
+| Z-score `min_periods` | min_periods = 60 | first z-score on session 61, computed against the 60 prior sessions (no look-ahead; today's value is excluded from its own baseline). |
 | MAD scale | 1.4826 | Standard constant that makes MAD match a standard deviation for normal data |
 | Stale-carry limit (`max_stale_sessions`) | 5 sessions | Chosen by the team, not derived |
 | Carry minimum history | none in config; one session with two eligible GOLDM expiries gives a value | From the code |

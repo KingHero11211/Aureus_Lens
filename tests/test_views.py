@@ -66,6 +66,24 @@ def test_thresholds_read_from_code():
     assert views.Z_THRESHOLD == 2.0
 
 
+def test_preregistration_wording_matches_code():
+    from pathlib import Path
+    from src.aureus_lens.core import signals
+
+    prereg = Path("PREREGISTRATION.md").read_text(encoding="utf-8")
+    expected_wording = (
+        "first z-score on session 61, computed against the 60 prior sessions "
+        "(no look-ahead; today's value is excluded from its own baseline)."
+    )
+    assert expected_wording in prereg
+    assert f"min_periods = {signals.Z_MIN_PERIODS}" in prereg
+    assert signals.Z_WINDOW == 60
+    assert signals.Z_MIN_PERIODS == 60
+    assert views.Z_WINDOW == signals.Z_WINDOW
+    assert views.Z_MIN_PERIODS == signals.Z_MIN_PERIODS
+
+
+
 def test_dashboard_and_code_agree_on_first_zscore():
     # Plain number series (not prices): 62 sessions of one pair.
     from src.aureus_lens.core.signals import compute_zscore
