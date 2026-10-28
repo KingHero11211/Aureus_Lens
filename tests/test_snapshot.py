@@ -13,7 +13,7 @@ import pytest
 
 from app import views
 from scripts.build_snapshot import main as build_main
-from src.aureus_lens.ingest.csv_loader import FORMAT_COLUMNS, load_csv
+from src.aureus_lens.ingest.bhav_loader import FORMAT_COLUMNS, load_csv
 from src.aureus_lens.snapshot import TABLES, read_snapshot
 from src.aureus_lens.store.db import init_db, store_load
 from tests.conftest import OCT_DIR

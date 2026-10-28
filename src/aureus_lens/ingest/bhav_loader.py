@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -164,16 +164,22 @@ def _reject_reasons(df: pd.DataFrame) -> pd.Series:
     return reasons
 
 
-def load_csv(path: Union[str, Path]) -> LoadResult:
-    """Parse one bhavcopy CSV.
+def load_csv(path: Union[str, Path, Any], filename: Optional[str] = None) -> LoadResult:
+    """Parse one bhavcopy CSV from a path or file-like stream.
 
     Returns a LoadResult whose rows hold FUTCOM rows for TARGET_SYMBOLS in
     SCHEMA units: prices in rupees per quote unit, volume and OI in lots,
     volume_000s in thousands of volume_unit, value in lakhs of rupees.
     Every other source row appears in rejects with a reason.
     """
-    path = Path(path)
-    raw = pd.read_csv(path, dtype=str, keep_default_na=False)
+    if isinstance(path, (str, Path)) and not hasattr(path, "read"):
+        path_obj = Path(path)
+        raw = pd.read_csv(path_obj, dtype=str, keep_default_na=False)
+    else:
+        name = filename or getattr(path, "name", "uploaded.csv")
+        path_obj = Path(name)
+        raw = pd.read_csv(path, dtype=str, keep_default_na=False)
+
     fmt = detect_format(list(raw.columns))
     parsed = _to_schema(raw, fmt)
 
@@ -187,4 +193,8 @@ def load_csv(path: Union[str, Path]) -> LoadResult:
     rows = parsed.loc[keep, SCHEMA].reset_index(drop=True)
     for col in ["volume_lots", "oi_lots"]:
         rows[col] = rows[col].astype("int64")
-    return LoadResult(path, fmt, rows, rejects[REJECT_COLUMNS].reset_index(drop=True))
+    return LoadResult(path_obj, fmt, rows, rejects[REJECT_COLUMNS].reset_index(drop=True))
+
+
+load_bhav = load_csv
+

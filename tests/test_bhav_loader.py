@@ -12,8 +12,8 @@ import pandas as pd
 import pytest
 
 from config import RAW_DIR
-from scripts.load_csv import main as load_csv_main
-from src.aureus_lens.ingest.csv_loader import (
+from scripts.load_bhav import main as load_csv_main
+from src.aureus_lens.ingest.bhav_loader import (
     FORMAT_COLUMNS,
     _to_schema,
     detect_format,

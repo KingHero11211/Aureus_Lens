@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List
 
 from config import PROJECT_ROOT
-from src.aureus_lens.ingest.csv_loader import LoadResult, filename_date, load_csv
+from src.aureus_lens.ingest.bhav_loader import LoadResult, filename_date, load_csv
 from src.aureus_lens.reconcile import check_continuity, continuity_events, render_data_notes
 from src.aureus_lens.store.db import (
     DEFAULT_DB_PATH,

@@ -7,8 +7,8 @@ import pandas as pd
 import pytest
 
 from config import RAW_DIR
-from scripts.load_csv import main as load_main
-from src.aureus_lens.ingest.csv_loader import load_csv
+from scripts.load_bhav import main as load_main
+from src.aureus_lens.ingest.bhav_loader import load_csv
 from src.aureus_lens.reconcile import (
     _weekdays_between,
     check_continuity,

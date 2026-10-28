@@ -13,7 +13,7 @@ import pytest
 
 from app import views
 from config import PROJECT_ROOT
-from src.aureus_lens.ingest.csv_loader import load_csv
+from src.aureus_lens.ingest.bhav_loader import load_csv
 from src.aureus_lens.store.db import DEFAULT_DB_PATH, init_db, store_load
 from tests.conftest import OCT_DIR
 

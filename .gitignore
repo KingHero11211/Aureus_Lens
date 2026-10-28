@@ -8,7 +8,7 @@ __pycache__/
 data/raw/
 public/assets/aistudio/
 *.csv
-!tests/fixtures/**/*.csv
+tests/fixtures/
 
 # Local store, rebuilt from CSVs
 *.duckdb
@@ -16,6 +16,7 @@ public/assets/aistudio/
 
 # Derived snapshot (excluded from push per owner decision)
 data/snapshot/
+*.parquet
 
 # Node (baseline frontend)
 node_modules/

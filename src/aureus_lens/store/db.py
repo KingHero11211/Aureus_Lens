@@ -6,7 +6,7 @@ from typing import Union
 import duckdb
 import pandas as pd
 
-from src.aureus_lens.ingest.csv_loader import SCHEMA, LoadResult
+from src.aureus_lens.ingest.bhav_loader import SCHEMA, LoadResult
 
 DEFAULT_DB_PATH: str = "data/aureus.duckdb"
 

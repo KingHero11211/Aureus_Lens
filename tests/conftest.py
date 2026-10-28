@@ -9,7 +9,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.aureus_lens.ingest.csv_loader import load_csv
+from tests.fixtures_data import ensure_fixtures
+
+ensure_fixtures()
+
+from src.aureus_lens.ingest.bhav_loader import load_csv
 
 OCT_DIR = Path(__file__).parent / "fixtures" / "oct2026"
 

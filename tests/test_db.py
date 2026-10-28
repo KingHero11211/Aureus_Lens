@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.aureus_lens.ingest.csv_loader import load_csv
+from src.aureus_lens.ingest.bhav_loader import load_csv
 from src.aureus_lens.store.db import BHAV_COLUMNS, init_db, read_bhav, store_load
 
 FIXTURES = Path(__file__).parent / "fixtures"
