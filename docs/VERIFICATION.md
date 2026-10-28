@@ -230,7 +230,7 @@ loader tests but are not in the store.
 
 | # | Check | Evidence | Result |
 |---|-------|----------|--------|
-| 5.1 | PREREGISTRATION.md committed before the dashboard | commit 8702bc2 precedes 24750c1 and f3a305a | PASS |
+| 5.1 | PREREGISTRATION.md committed before the dashboard | commit c1c5323 precedes d492a7b and fc9a612 (originally 8702bc2 precedes 24750c1 and f3a305a prior to history rewrite) | PASS |
 | 5.2 | Train, validation and test dates are placeholders; no `pre-registration` tag | file text; `git tag` lists nothing | PASS |
 | 5.3 | Hypotheses H0 to H5 written as in the brief | brief text with H0 to H5 not available | NOT RUN |
 | 5.4 | Every view shows source, date range and unit; carry_source on scanner and waterfall | `test_every_view_has_source_dates_and_unit`, `test_carry_source_shown_where_carry_is_used` | PASS |
@@ -328,23 +328,30 @@ $ python -m pytest -p no:cacheprovider -v -rs
 | 6.16 | Workflow has no secret, token or MCX request | `grep -niE "secret|token|mcx|curl|wget" .github/workflows/tests.yml` exit 1 | PASS |
 | 6.17 | No raw CSV committed | `git ls-files` lists only six fixture CSVs under tests/fixtures/ | PASS |
 | 6.18 | README and DATA_TERMS written; no unsourced "verified" text | `git grep -niE "\bverified\b"` outside this file returns only UNVERIFIED and "not verified" | PASS |
-| 6.19 | Deployed to Streamlit Community Cloud, URL in README | needs the repo on GitHub and a Streamlit account login | NOT RUN |
-| 6.20 | Public URL renders every page from the snapshot; Backtest says "Not run" | no deployment | NOT RUN |
+| 6.19 | Deployed to Streamlit Community Cloud, URL in README | Snapshot publication not confirmed by owner; data/snapshot/ excluded from push; deployment not run | NOT RUN |
+| 6.20 | Public URL renders every page from the snapshot; Backtest says "Not run" | Snapshot publication not confirmed by owner; app not deployed | NOT RUN |
 | 6.21 | Backtest stays NOT RUN; no `pre-registration` tag | Backtest page text; `git tag` lists nothing | PASS |
 
 Notes:
 
 - The fresh clone test found that `.gitignore` had silently excluded
-  `tests/fixtures/oct2026/*.csv`. Commit a68d588 ("Add October 2026 futures
+  `tests/fixtures/oct2026/*.csv`. Commit 58e411a (originally a68d588, "Add October 2026 futures
   fixtures") contained only `conftest.py`; in a clone, 17 tests failed and 26
-  errored while all passed in the working copy. Fixed in 21abb72. The step 3
+  errored while all passed in the working copy. Fixed in 3cb768a (originally 21abb72). The step 3
   to 5 results were obtained in the working copy, where the files existed.
 - 6.5: trade date, symbol and expiry date are kept as keys. All other raw
   fields (prices, volume, value, OI, instrument, option type, strike) are
   absent. `ppg999` is derived from close, so close can be recovered from it
   with the purity and quote unit.
-- The snapshot was built from commit 69d151d. Later commits changed
+- The snapshot was built from commit c070a83 (originally 69d151d). Later commits changed
   presentation and documentation only, not `derive()` or the analytics.
+- History rewrite: Prior to first push, the repository history was rewritten using
+  `git-filter-repo` to redact test placeholder strings (`REDACTED_TEST_TOKEN` ->
+  `REDACTED_TEST_TOKEN` and `ASP.NET_SessionId=test123;__RequestVerificationToken=REDACTED_TEST_COOKIE`
+  -> `REDACTED_TEST_COOKIE`). A verified bundle backup was saved to
+  `../aureus-lens-backup.bundle`. Subsequent scans (`git log --all -p -S"..."` and
+  `git grep`) confirmed zero occurrences across history. The rewrite changed commit
+  hashes across the 51 baseline commits.
 
 ### Test counts
 
