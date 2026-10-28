@@ -29,7 +29,9 @@ The repository contains:
   used as test inputs.
 - `data/snapshot/`: tables derived from the files (prices per gram of 999
   gold, pair spreads, carry, check results). `data/snapshot/manifest.json`
-  lists the source files and their SHA-256 checksums.
+  lists the source files and their SHA-256 checksums. Close can be recovered
+  from the per-gram price in the snapshot by reversing the normalisation in
+  config.
 
 ## Use
 
