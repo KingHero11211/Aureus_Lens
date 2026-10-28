@@ -346,12 +346,68 @@ Notes:
 - The snapshot was built from commit c070a83 (originally 69d151d). Later commits changed
   presentation and documentation only, not `derive()` or the analytics.
 - History rewrite: Prior to first push, the repository history was rewritten using
-  `git-filter-repo` to redact test placeholder strings (`REDACTED_TEST_TOKEN` ->
-  `REDACTED_TEST_TOKEN` and `ASP.NET_SessionId=test123;__RequestVerificationToken=REDACTED_TEST_COOKIE`
-  -> `REDACTED_TEST_COOKIE`). A verified bundle backup was saved to
-  `../aureus-lens-backup.bundle`. Subsequent scans (`git log --all -p -S"..."` and
-  `git grep`) confirmed zero occurrences across history. The rewrite changed commit
-  hashes across the 51 baseline commits.
+  `git-filter-repo` to redact test placeholder strings from baseline ingest tests,
+  and to completely excise `data/snapshot/` from all historical commits per the
+  owner's unconfirmed redistribution decision. A verified bundle backup was saved to
+  `../aureus-lens-backup.bundle`. Subsequent scans confirmed zero occurrences of
+  test secrets or snapshot files across history.
+
+### Commit hash mapping (original baseline to rewritten history)
+
+| Original commit | Rewritten commit | Commit subject |
+|---|---|---|
+| d6bfa31 | 84c641a | Import hackathon baseline |
+| 246c9e4 | 2a360da | Normalize line endings to LF |
+| 718feb1 | 40ce37c | Remove unused AI Studio React frontend |
+| 84097da | dbce9ce | Remove MCX network client and backfill |
+| f1e9ea0 | 7cfe2ce | Pin dependencies and add setup instructions |
+| d129ea7 | 5ec70b8 | Add verification log for baseline cleanup |
+| 8500853 | 3a7cbce | Mark unconfirmed contract facts and cost rates as UNVERIFIED |
+| 08f643b | dc9e4c6 | Add bhavcopy fixtures copied from real files |
+| 1843b2e | 6203dbf | Add CSV loader for MCX and Samco bhavcopy files |
+| 12a944c | 53d5f43 | Add load_csv command with per-file report |
+| f2470b4 | 03aa978 | Record CSV loader checks in verification log |
+| 5fbca2a | 0eae8ac | Add GOLDGUINEA tender source and holiday dates to UNVERIFIED list |
+| bc99fe1 | d0fd9b7 | Add GOLDTEN launch date and GOLDM tender window to UNVERIFIED list |
+| 02be05b | 7f3c392 | Rebuild DuckDB store on the loader schema |
+| dd618a0 | a4dfdc9 | Add continuity and value checks and data notes report |
+| d8ed954 | 322da6f | Store loaded files and write data notes from load_csv |
+| 9f9e2e3 | d6e1214 | Add generated data notes for the three loaded files |
+| 90cb7a8 | 200d2d4 | Write data notes with LF line endings |
+| c2c69e6 | afe5b76 | Record storage and pipeline checks in verification log |
+| 97d26b2 | 4b59ff4 | Refuse files whose name and row dates disagree |
+| 2538d29 | 58e411a | Add October 2026 futures fixtures |
+| 6d4ce60 | d57950a | Read quote units and purity for normalization from config |
+| 778bb17 | 32afd14 | Compute carry per session with carry_source and no look-ahead |
+| 90c312b | e7957ec | Ignore leading NaN in the rolling MAD |
+| 8676119 | 791db4c | Add pair cost in bps |
+| bbdf43d | 3182359 | Use per-symbol tender periods in the executability gate |
+| 7429c8e | 00a18dd | Apply waterfall friction in order instead of pro rata |
+| dbe6202 | 5f5b781 | Add pair spreads for small-small and small-GOLDM pairs |
+| 29390a6 | 7df5741 | Regenerate data notes with October 2026 sessions |
+| f734dfa | 5e13246 | Record core analytics checks in verification log |
+| 47501b3 | c1c5323 | Add draft pre-registration with placeholder dates |
+| 7aea3ae | d492a7b | Add dashboard view functions with history and label rules |
+| bb527e9 | fc9a612 | Rewrite Streamlit dashboard on the view functions |
+| bb478fe | 45ec04a | Bind Streamlit to localhost and turn off usage stats |
+| fa232a8 | 8e209c0 | Regenerate data notes from the October 2026 files only |
+| 1097b31 | d45d651 | Record dashboard and pre-registration checks in verification log |
+| 95c3595 | 0c08e71 | Hide carry until five sessions have an empirical value |
+| f06e8e9 | 88e6132 | Set z-score min_periods to the 60-session window |
+| 36ef62e | 340a70a | Compute dashboard tables once and render pages from them |
+| abb946d | c070a83 | Add derived snapshot writer and build script |
+| e269d34 | *(dropped)* | Add derived snapshot of the October 2026 sessions |
+| 0b75a07 | 53ca7fc | Drop the localhost binding from the shared Streamlit config |
+| 75c4ddb | 2af04d9 | Pin Python 3.11 in runtime.txt |
+| 9249e65 | 3705cb8 | Run pytest on push and pull request |
+| dcbb550 | faf3ca7 | Say 'checked against data' instead of 'verified' for lot and quote units |
+| 6157b4c | 95730dd | Write README with run steps, data process and UNVERIFIED list |
+| 4da5079 | 24ef9f4 | Add data terms |
+| 54c2673 | afe608c | Commit the October 2026 fixtures that .gitignore had dropped |
+| 7c639e8 | 0a2d3e7 | List small-vs-small pairs first in the waterfall picker |
+| 3dc3a03 | 3104abd | Record step 6 checks and fresh clone log in verification log |
+| b08b699 | efbca8c | Skip lowercase 'was NOT RUN' items in the NOT RUN list |
+
 
 ### Test counts
 
