@@ -1,5 +1,7 @@
 # Aureus Lens
 
+[![tests](https://github.com/KingHero11211/Aureus_Lens/actions/workflows/tests.yml/badge.svg)](https://github.com/KingHero11211/Aureus_Lens/actions/workflows/tests.yml)
+
 Relative-value analytics for four MCX gold futures: GOLDM, GOLDTEN,
 GOLDGUINEA and GOLDPETAL. Built for Hack in Hills '26, Problem Statement 03.
 
@@ -42,7 +44,7 @@ in both cases.
 The app reads `data/aureus.duckdb` if it exists and otherwise the committed
 snapshot in `data/snapshot/`, so a fresh clone shows the October 2026 data.
 
-Public app: not deployed yet.
+Deploy: NOT RUN (Snapshot redistribution not confirmed; data/snapshot/ excluded from repo).
 
 ## Data
 
